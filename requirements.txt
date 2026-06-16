@@ -1,2 +1,8 @@
+# Serverless & Network Communication
 runpod==1.6.2
 requests==2.31.0
+
+# --- [Phase 2 AI Model Dependencies (TBD)] ---
+# torch==2.1.0+cu118
+# torchaudio==2.1.0+cu118
+# numpy>=1.24.0
