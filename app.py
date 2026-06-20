@@ -70,10 +70,16 @@ def convert_vectors_to_wav_tensor(melody_vectors: List[MelodyVector], sample_rat
     return melody_wav
 
 def upload_to_s3(local_path, bucket_name, s3_key):
+    aws_id = os.environ.get('AWS_ACCESS_KEY_ID')
+    aws_secret = os.environ.get('AWS_SECRET_ACCESS_KEY')
+    if not aws_id or aws_id == 'mock' or not aws_secret or aws_secret == 'mock':
+        print("AWS credentials not set or set to mock. Skipping S3 upload. Local file preserved at:", local_path)
+        return f"file://{local_path}"
+
     s3 = boto3.client(
         's3',
-        aws_access_key_id=os.environ.get('AWS_ACCESS_KEY_ID'),
-        aws_secret_access_key=os.environ.get('AWS_SECRET_ACCESS_KEY'),
+        aws_access_key_id=aws_id,
+        aws_secret_access_key=aws_secret,
         region_name=os.environ.get('AWS_DEFAULT_REGION', 'ap-northeast-2')
     )
     s3.upload_file(local_path, bucket_name, s3_key)
@@ -108,12 +114,12 @@ def process_music_generation(req: GenerationRequest):
         torchaudio.save(local_output_path, output_wav, 32000)
         
         # 5. Upload to S3
-        bucket = os.environ.get('AWS_S3_BUCKET')
+        bucket = os.environ.get('AWS_S3_BUCKET', 'mock-bucket')
         s3_key = f"generated/songs/{req.task_id}.wav"
         generated_audio_url = upload_to_s3(local_output_path, bucket, s3_key)
         
-        # Clean up local file
-        if os.path.exists(local_output_path):
+        # Clean up local file only if successfully uploaded to real S3
+        if not generated_audio_url.startswith("file://") and os.path.exists(local_output_path):
             os.remove(local_output_path)
             
         # 6. Callback backend
