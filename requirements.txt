@@ -1,6 +1,6 @@
 torch>=2.0.0
 torchaudio
-audiocraft-academic
+audiocraft
 fastapi
 uvicorn
 runpod
