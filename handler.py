@@ -31,11 +31,21 @@ def load_model():
     global model
     if model is None:
         print("Loading MusicGen Melody model...")
-        model = MusicGen.get_pretrained('facebook/musicgen-melody')
-        print("Model loaded successfully.")
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Targeting device for load: {device}")
+        try:
+            model = MusicGen.get_pretrained('facebook/musicgen-melody', device=device)
+            print("Model loaded successfully.")
+        except Exception as e:
+            print(f"Failed to load model on {device}: {e}. Retrying on CPU...")
+            try:
+                model = MusicGen.get_pretrained('facebook/musicgen-melody', device="cpu")
+                print("Model loaded successfully on CPU.")
+            except Exception as cpu_err:
+                print(f"Failed to load model on CPU as well: {cpu_err}")
+                raise cpu_err
 
-# Pre-load model at container boot (RunPod Serverless optimization)
-load_model()
+# Removed pre-load model at container boot to support lazy loading and avoid CUDA initialization crashes during melody extraction.
 
 def convert_vectors_to_wav_tensor(melody_vectors, sample_rate=16000):
     pm = pretty_midi.PrettyMIDI()
@@ -85,6 +95,7 @@ def upload_via_presigned_url(local_path, presigned_url):
         res.raise_for_status()
 
 def handle_music_generation(job_input, job_id):
+    load_model()
     task_id = job_input.get("task_id", job_id)
     melody_vectors = job_input.get("melody_vectors", [])
     genre = job_input.get("genre", "")
@@ -113,7 +124,7 @@ def handle_music_generation(job_input, job_id):
             print(f"convert_vectors_to_wav_tensor failed: {e}. Falling back.")
             melody_wav = synthesize_sine_fallback(melody_vectors, sample_rate=16000)
             
-        device = "cuda" if torch.cuda.is_available() else "cpu"
+        device = model.device if hasattr(model, 'device') else ("cuda" if torch.cuda.is_available() else "cpu")
         melody_wav = melody_wav.to(device)
         
         # 2. Setup generation parameters
