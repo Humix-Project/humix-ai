@@ -1,6 +1,5 @@
 torch>=2.0.0
 torchaudio
-audiocraft
 fastapi
 uvicorn
 runpod
@@ -11,3 +10,17 @@ librosa
 numpy
 scipy
 pydantic
+spacy>=3.8.0
+thinc>=8.3.0
+einops
+flashy>=0.0.2
+hydra-core>=1.1
+hydra-colorlog
+julius
+num2words
+sentencepiece
+transformers
+huggingface-hub
+demucs
+encodec
+av
