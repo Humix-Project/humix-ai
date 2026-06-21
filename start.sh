@@ -41,21 +41,47 @@ else
     echo "✅ System dependencies (ffmpeg) are already installed."
 fi
 
-# 3. Python virtual environment setup
+# 3. Python virtual environment setup with system packages
 if [ -d "venv" ]; then
     echo "🐍 Virtual environment 'venv' already exists. Activating..."
     source venv/bin/activate
 else
-    echo "🐍 Creating new python virtual environment 'venv'..."
-    python3 -m venv venv
+    echo "🐍 Creating new python virtual environment 'venv' with system site packages..."
+    python3 -m venv venv --system-site-packages
     source venv/bin/activate
 fi
 
 # 4. Python packages installation
 echo "📦 Installing python dependencies..."
 pip install --upgrade pip
-pip install -r requirements.txt
+
+# Filter out torch, torchaudio, and xformers to prevent pip from rebuilding/reinstalling them
+grep -vE "^(torch|torchaudio|xformers)" requirements.txt > temp_requirements.txt
+pip install -r temp_requirements.txt
+rm temp_requirements.txt
+
+# Install audiocraft
 pip install --no-deps audiocraft
+
+# Verify if torch and torchaudio are available
+if ! python3 -c "import torch, torchaudio" &> /dev/null; then
+    echo "torch or torchaudio not found. Installing latest stable version..."
+    pip install torch torchaudio
+fi
+
+# Try to install compatible xformers, but do not fail if it cannot be installed
+if ! python3 -c "import xformers" &> /dev/null; then
+    echo "xformers not found. Attempting to install xformers..."
+    PY_VER=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+    if [ "$PY_VER" = "3.10" ] || [ "$PY_VER" = "3.11" ]; then
+        pip install xformers==0.0.22.post7 || echo "⚠️ Failed to install pinned xformers. Proceeding using native PyTorch attention."
+    else
+        # For Python 3.12+, let pip resolve a compatible version
+        pip install xformers || echo "⚠️ Failed to install xformers. Proceeding using native PyTorch attention."
+    fi
+else
+    echo "✅ xformers is already installed."
+fi
 
 # 5. Pre-download weights to persistent cache
 echo "📥 Pre-downloading model weights to persistent volume..."
