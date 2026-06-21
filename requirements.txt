@@ -1,0 +1,9 @@
+torch>=2.0.0
+torchaudio
+audiocraft-academic
+fastapi
+uvicorn
+runpod
+pretty_midi
+boto3
+requests
