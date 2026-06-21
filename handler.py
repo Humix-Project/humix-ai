@@ -1,3 +1,12 @@
+import os
+import sys
+
+# Set cache directories to utilize RunPod's persistent /workspace if available
+if os.path.exists("/workspace"):
+    os.environ["HF_HOME"] = "/workspace/.cache/huggingface"
+    os.environ["TORCH_HOME"] = "/workspace/.cache/torch"
+    os.environ["XDG_CACHE_HOME"] = "/workspace/.cache"
+
 import runpod
 import torch
 import torchaudio
