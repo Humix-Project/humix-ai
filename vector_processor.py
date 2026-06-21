@@ -31,19 +31,8 @@ class MelodyProcessor:
             try:
                 response = requests.get(file_path_or_url, stream=True)
                 response.raise_for_status()
-                
-                # 1차 검증: Content-Length 헤더 체크 (20MB 제한)
-                content_length = response.headers.get('Content-Length')
-                if content_length and int(content_length) > 20 * 1024 * 1024:
-                    raise ValueError("Audio file size exceeds the 20MB limit.")
-                
-                # 2차 검증: 다운로드 진행하면서 누적 크기 체크
-                downloaded_size = 0
                 with open(local_path, "wb") as f:
                     for chunk in response.iter_content(chunk_size=8192):
-                        downloaded_size += len(chunk)
-                        if downloaded_size > 20 * 1024 * 1024:
-                            raise ValueError("Audio file size exceeds the 20MB limit.")
                         f.write(chunk)
             except Exception as e:
                 if os.path.exists(local_path):
