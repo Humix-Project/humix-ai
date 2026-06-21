@@ -25,8 +25,13 @@ import requests
 from audiocraft.models import MusicGen
 from vector_processor import MelodyProcessor
 
+import threading
+
 app = FastAPI(title="HuMix AI MusicGen & Vectorization Service")
 processor = MelodyProcessor()
+
+# Global lock to serialize access to the stateful MusicGen model in concurrent threads
+model_lock = threading.Lock()
 
 # Initialize model globally (loaded on first request or startup)
 model = None
@@ -140,12 +145,11 @@ def process_music_generation(task_id: str, melody_vectors: List[MelodyVector], p
         device = "cuda" if torch.cuda.is_available() else "cpu"
         melody_wav = melody_wav.to(device)
         
-        # 2. Setup generation parameters
-        model.set_generation_params(duration=30)
-        
-        # 3. Generate music
-        print(f"[{task_id}] Running MusicGen Melody model inference...")
-        outputs = model.generate_with_chroma([prompt], melody_wav, 16000)
+        # 2. Setup generation parameters and generate music (Thread-Safe)
+        with model_lock:
+            print(f"[{task_id}] Running MusicGen Melody model inference...")
+            model.set_generation_params(duration=30)
+            outputs = model.generate_with_chroma([prompt], melody_wav, 16000)
         
         # 4. Save output locally
         print(f"[{task_id}] Generation complete. Saving output WAV locally...")
