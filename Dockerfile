@@ -44,12 +44,7 @@ ENV HF_HUB_DISABLE_PROGRESS_BARS=1
 RUN mkdir -p /cache/huggingface /cache/torch
 
 # Pre-download MusicGen Melody, EnCodec 32kHz, and T5-base text encoder weights during build
-RUN python -c " \
-from huggingface_hub import snapshot_download; \
-snapshot_download(repo_id='facebook/musicgen-melody'); \
-snapshot_download(repo_id='facebook/encodec_32khz'); \
-snapshot_download(repo_id='t5-base'); \
-"
+RUN python -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='facebook/musicgen-melody'); snapshot_download(repo_id='facebook/encodec_32khz'); snapshot_download(repo_id='t5-base')"
 
 COPY app.py /app.py
 COPY handler.py /handler.py
