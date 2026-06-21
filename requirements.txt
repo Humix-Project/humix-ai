@@ -7,3 +7,7 @@ runpod
 pretty_midi
 boto3
 requests
+librosa
+numpy
+scipy
+pydantic
