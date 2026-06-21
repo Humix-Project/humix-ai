@@ -20,6 +20,7 @@ RUN apt-get update && apt-get install -y \
 
 COPY requirements.txt /requirements.txt
 RUN pip install --no-cache-dir -r /requirements.txt
+RUN pip install --no-cache-dir --no-deps audiocraft
 
 # Pre-download the Meta MusicGen Melody model to reduce cold start latency
 RUN python -c "from audiocraft.models import MusicGen; MusicGen.get_pretrained('facebook/musicgen-melody')"
