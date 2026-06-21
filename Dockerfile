@@ -13,6 +13,9 @@ FROM pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime AS runtime
 
 WORKDIR /
 
+# Suppress interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+
 # Install system dependencies, including fluidsynth and soundfont for pretty_midi synthesis
 RUN apt-get update && apt-get install -y \
     git \
