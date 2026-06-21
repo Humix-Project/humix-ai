@@ -10,6 +10,7 @@ on:
       - 'vector_service.py'
       - 'requirements.txt'
       - 'Dockerfile'
+      - '.dockerignore'
       - '.github/workflows/docker-build.yml'
 
 jobs:
