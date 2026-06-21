@@ -1,4 +1,15 @@
-FROM pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime
+FROM python:3.11-slim AS smoke
+
+WORKDIR /
+
+COPY app.py /app.py
+COPY handler.py /handler.py
+COPY vector_processor.py /vector_processor.py
+COPY vector_service.py /vector_service.py
+
+CMD [ "python", "-c", "print('Docker smoke image built successfully')" ]
+
+FROM pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime AS runtime
 
 WORKDIR /
 

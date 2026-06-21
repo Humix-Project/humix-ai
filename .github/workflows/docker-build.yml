@@ -16,6 +16,8 @@ on:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    env:
+      BUILD_TARGET: ${{ github.ref_name == 'main' && 'runtime' || 'smoke' }}
 
     steps:
       # 1. 코드 체크아웃
@@ -40,7 +42,8 @@ jobs:
         with:
           images: ${{ vars.DOCKERHUB_USERNAME }}/humix-ai
           tags: |
-            type=raw,value=latest
+            type=raw,value=latest,enable=${{ github.ref_name == 'main' }}
+            type=ref,event=branch
             type=sha,prefix=,format=short
 
       # 5. 빌드 & Docker Hub에 Push
@@ -51,6 +54,7 @@ jobs:
         with:
           context: .
           platforms: linux/amd64
+          target: ${{ env.BUILD_TARGET }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
