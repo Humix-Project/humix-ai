@@ -16,9 +16,35 @@ class MelodyProcessor:
         [단계 1] 원보 오디오 전처리 (MelodyExtractor.preprocess)
         입력 환경 편차를 최소화하기 위해 16,000Hz 모노 오디오로 다운샘플링 수행
         """
-        # librosa는 S3의 HTTP URL 주소로부터도 스트리밍 형태로 오디오를 직접 로드할 수 있습니다.
-        signal, _ = librosa.load(file_path_or_url, sr=self.target_sr, mono=True)
-        return signal.astype(np.float32)
+        import tempfile
+        import os
+        import requests
+
+        local_path = file_path_or_url
+        is_url = file_path_or_url.startswith("http://") or file_path_or_url.startswith("https://")
+        
+        if is_url:
+            print(f"Downloading audio from URL: {file_path_or_url}")
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
+            temp_file.close()
+            local_path = temp_file.name
+            try:
+                response = requests.get(file_path_or_url, stream=True)
+                response.raise_for_status()
+                with open(local_path, "wb") as f:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        f.write(chunk)
+            except Exception as e:
+                if os.path.exists(local_path):
+                    os.remove(local_path)
+                raise RuntimeError(f"Failed to download audio from URL: {e}")
+
+        try:
+            signal, _ = librosa.load(local_path, sr=self.target_sr, mono=True)
+            return signal.astype(np.float32)
+        finally:
+            if is_url and os.path.exists(local_path):
+                os.remove(local_path)
 
     def extract_f0(self, signal: np.ndarray) -> list[dict]:
         """

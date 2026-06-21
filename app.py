@@ -1,11 +1,17 @@
 import os
 import sys
 
-# Set cache directories to utilize RunPod's persistent /workspace if available
-if os.path.exists("/workspace"):
+# Use the baked-in cache if available, otherwise fallback to RunPod's workspace cache
+if os.path.exists("/cache/huggingface"):
+    os.environ["HF_HOME"] = "/cache/huggingface"
+elif os.path.exists("/workspace"):
     os.environ["HF_HOME"] = "/workspace/.cache/huggingface"
-    os.environ["TORCH_HOME"] = "/workspace/.cache/torch"
     os.environ["XDG_CACHE_HOME"] = "/workspace/.cache"
+
+if os.path.exists("/cache/torch"):
+    os.environ["TORCH_HOME"] = "/cache/torch"
+elif os.path.exists("/workspace"):
+    os.environ["TORCH_HOME"] = "/workspace/.cache/torch"
 
 from fastapi import FastAPI, BackgroundTasks, HTTPException, status
 from pydantic import BaseModel
@@ -19,8 +25,13 @@ import requests
 from audiocraft.models import MusicGen
 from vector_processor import MelodyProcessor
 
+import threading
+
 app = FastAPI(title="HuMix AI MusicGen & Vectorization Service")
 processor = MelodyProcessor()
+
+# Global lock to serialize access to the stateful MusicGen model in concurrent threads
+model_lock = threading.Lock()
 
 # Initialize model globally (loaded on first request or startup)
 model = None
@@ -37,6 +48,8 @@ def load_model():
 def startup_event():
     if os.environ.get("TESTING") != "true":
         load_model()
+
+import uuid
 
 class MelodyVector(BaseModel):
     pitch: int
@@ -62,6 +75,21 @@ class ModificationRequest(BaseModel):
 
 class MelodyExtractRequest(BaseModel):
     s3_url: str
+
+class RunpodInput(BaseModel):
+    action: Optional[str] = "generate"
+    task_id: Optional[str] = None
+    melody_vectors: Optional[List[MelodyVector]] = None
+    genre: Optional[str] = None
+    mood: Optional[str] = None
+    reference_track: Optional[str] = None
+    callback_url: Optional[str] = None
+    presigned_url: Optional[str] = None
+    prompt: Optional[str] = None
+    s3_url: Optional[str] = None
+
+class RunpodRequestEnvelope(BaseModel):
+    input: RunpodInput
 
 def convert_vectors_to_wav_tensor(melody_vectors: List[MelodyVector], sample_rate=16000):
     pm = pretty_midi.PrettyMIDI()
@@ -134,12 +162,11 @@ def process_music_generation(task_id: str, melody_vectors: List[MelodyVector], p
         device = "cuda" if torch.cuda.is_available() else "cpu"
         melody_wav = melody_wav.to(device)
         
-        # 2. Setup generation parameters
-        model.set_generation_params(duration=30)
-        
-        # 3. Generate music
-        print(f"[{task_id}] Running MusicGen Melody model inference...")
-        outputs = model.generate_with_chroma([prompt], melody_wav, 16000)
+        # 2. Setup generation parameters and generate music (Thread-Safe)
+        with model_lock:
+            print(f"[{task_id}] Running MusicGen Melody model inference...")
+            model.set_generation_params(duration=30)
+            outputs = model.generate_with_chroma([prompt], melody_wav, 16000)
         
         # 4. Save output locally
         print(f"[{task_id}] Generation complete. Saving output WAV locally...")
@@ -194,6 +221,60 @@ def extract_melody(payload: MelodyExtractRequest):
         return result_vector
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"AI 멜로디 추출 엔진 연산 실패: {str(e)}")
+
+@app.post("/run", status_code=status.HTTP_200_OK)
+async def runpod_run(req: RunpodRequestEnvelope, background_tasks: BackgroundTasks):
+    inp = req.input
+    task_id = inp.task_id or f"mock_task_{uuid.uuid4().hex[:8]}"
+    
+    if inp.action in ["generate", "modify"]:
+        if not inp.callback_url or not inp.presigned_url:
+            raise HTTPException(status_code=400, detail="Both callback_url and presigned_url are required.")
+        
+        prompt = inp.prompt
+        if not prompt:
+            prompt = f"{inp.genre}, {inp.mood}"
+            if inp.reference_track:
+                prompt += f", in the style of {inp.reference_track}"
+        
+        background_tasks.add_task(
+            process_music_generation, 
+            task_id, 
+            inp.melody_vectors or [], 
+            prompt, 
+            inp.presigned_url, 
+            inp.callback_url
+        )
+        return {"id": task_id, "status": "IN_QUEUE"}
+    else:
+        raise HTTPException(status_code=400, detail=f"Invalid action for async run: {inp.action}")
+
+@app.post("/runsync", status_code=status.HTTP_200_OK)
+def runpod_runsync(req: RunpodRequestEnvelope):
+    inp = req.input
+    if inp.action == "melody-extract":
+        if not inp.s3_url:
+            raise HTTPException(status_code=400, detail="s3_url is required for melody-extract action.")
+        try:
+            signal = processor.preprocess_audio(inp.s3_url)
+            f0_data = processor.extract_f0(signal)
+            n_raw = processor.hz_to_midi(f0_data)
+            result_vector = processor.quantize_and_map(n_raw)
+            return {
+                "id": f"mock_job_{uuid.uuid4().hex[:8]}",
+                "status": "COMPLETED",
+                "output": {
+                    "result_vector": result_vector
+                }
+            }
+        except Exception as e:
+            return {
+                "id": f"mock_job_{uuid.uuid4().hex[:8]}",
+                "status": "FAILED",
+                "error": f"AI 멜로디 추출 엔진 연산 실패: {str(e)}"
+            }
+    else:
+        raise HTTPException(status_code=400, detail=f"Invalid action for runsync: {inp.action}")
 
 @app.get("/health")
 def health():
