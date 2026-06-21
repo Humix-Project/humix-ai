@@ -1,11 +1,17 @@
 import os
 import sys
 
-# Set cache directories to utilize RunPod's persistent /workspace if available
-if os.path.exists("/workspace"):
+# Use the baked-in cache if available, otherwise fallback to RunPod's workspace cache
+if os.path.exists("/cache/huggingface"):
+    os.environ["HF_HOME"] = "/cache/huggingface"
+elif os.path.exists("/workspace"):
     os.environ["HF_HOME"] = "/workspace/.cache/huggingface"
-    os.environ["TORCH_HOME"] = "/workspace/.cache/torch"
     os.environ["XDG_CACHE_HOME"] = "/workspace/.cache"
+
+if os.path.exists("/cache/torch"):
+    os.environ["TORCH_HOME"] = "/cache/torch"
+elif os.path.exists("/workspace"):
+    os.environ["TORCH_HOME"] = "/workspace/.cache/torch"
 
 from fastapi import FastAPI, BackgroundTasks, HTTPException, status
 from pydantic import BaseModel

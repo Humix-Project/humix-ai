@@ -17,7 +17,7 @@ jobs:
   build-and-push:
     runs-on: ubuntu-latest
     env:
-      BUILD_TARGET: ${{ github.ref_name == 'main' && 'runtime' || 'smoke' }}
+      BUILD_TARGET: ${{ (github.ref_name == 'main' || github.ref_name == 'feat/musicgen-integration') && 'runtime' || 'smoke' }}
 
     steps:
       # 1. 코드 체크아웃
