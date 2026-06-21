@@ -107,15 +107,19 @@ def upload_via_presigned_url(local_path, presigned_url):
         res.raise_for_status()
 
 def process_music_generation(task_id: str, melody_vectors: List[MelodyVector], prompt: str, presigned_url: str, callback_url: str):
+    print(f"\n[START] Starting music generation task: {task_id}")
+    print(f"  Prompt: {prompt}")
+    print(f"  Melody vectors count: {len(melody_vectors)}")
     local_output_path = f"/tmp/{task_id}.wav"
     try:
         load_model()
         
         # 1. Convert melody vectors to audio tensor (with fallback)
         try:
+            print(f"[{task_id}] Synthesizing melody vectors to audio waveform...")
             melody_wav = convert_vectors_to_wav_tensor(melody_vectors, sample_rate=16000)
         except Exception as e:
-            print(f"convert_vectors_to_wav_tensor failed: {e}. Falling back.")
+            print(f"[{task_id}] convert_vectors_to_wav_tensor failed: {e}. Falling back.")
             melody_wav = synthesize_sine_fallback(melody_vectors, sample_rate=16000)
             
         device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -125,21 +129,26 @@ def process_music_generation(task_id: str, melody_vectors: List[MelodyVector], p
         model.set_generation_params(duration=30)
         
         # 3. Generate music
+        print(f"[{task_id}] Running MusicGen Melody model inference...")
         outputs = model.generate_with_chroma([prompt], melody_wav, 16000)
         
         # 4. Save output locally
+        print(f"[{task_id}] Generation complete. Saving output WAV locally...")
         output_wav = outputs[0].cpu()
         torchaudio.save(local_output_path, output_wav, 32000)
         
         # 5. Upload via presigned URL
+        print(f"[{task_id}] Uploading generated file to S3 via presigned URL...")
         upload_via_presigned_url(local_output_path, presigned_url)
         
         # 6. Callback backend (Success)
+        clean_audio_url = presigned_url.split('?')[0]
         callback_payload = {
-            "generated_audio_url": presigned_url.split('?')[0]  # Return clean URL without query parameters
+            "generated_audio_url": clean_audio_url
         }
-        print(f"Calling backend callback: {callback_url}")
+        print(f"[{task_id}] Calling backend callback: {callback_url}")
         requests.post(callback_url, json=callback_payload, timeout=10)
+        print(f"[SUCCESS] Task {task_id} completed successfully!\n")
         
     except Exception as e:
         print(f"Error generating music for task {task_id}: {str(e)}")
