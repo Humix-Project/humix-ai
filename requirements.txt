@@ -24,4 +24,5 @@ huggingface-hub
 demucs
 encodec
 av
+torchmetrics
 xformers; platform_system == "Linux"
