@@ -9,7 +9,7 @@ COPY vector_service.py /vector_service.py
 
 CMD [ "python", "-c", "print('Docker smoke image built successfully')" ]
 
-FROM pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime AS runtime
+FROM pytorch/pytorch:2.6.0-cuda12.6-cudnn9-runtime AS runtime
 
 WORKDIR /
 
