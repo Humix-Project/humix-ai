@@ -1,9 +1,13 @@
 torch>=2.0.0
 torchaudio
-audiocraft-academic
+audiocraft
 fastapi
 uvicorn
 runpod
 pretty_midi
 boto3
 requests
+librosa
+numpy
+scipy
+pydantic
