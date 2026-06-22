@@ -1,15 +1,13 @@
 #!/bin/bash
 
-# Exit immediately if a command exits with a non-zero status
+# 에러 발생 시 즉시 종료 설정
 set -e
 
 echo "========================================================="
 echo "🚀 RunPod GPU Pod Setup & Startup Script Starting"
 echo "========================================================="
 
-# 1. Setup cache directories on persistent /workspace volume
-# RunPod GPU Pods only persist data inside /workspace. 
-# Caching here prevents re-downloading 4.5GB of models on every pod restart.
+# 1. 영구 볼륨(/workspace)에 캐시 디렉토리 설정
 export HF_HOME="/workspace/.cache/huggingface"
 export TORCH_HOME="/workspace/.cache/torch"
 export HF_HUB_DISABLE_PROGRESS_BARS=1
@@ -19,10 +17,9 @@ mkdir -p "$HF_HOME" "$TORCH_HOME"
 echo "📍 HF Cache Path: $HF_HOME"
 echo "📍 Torch Cache Path: $TORCH_HOME"
 
-# 2. System dependencies check (ffmpeg, fluidsynth for pretty_midi)
+# 2. 시스템 의존성 체크 및 설치 (ffmpeg 등)
 if ! command -v ffmpeg &> /dev/null; then
-    echo "📦 System dependencies (ffmpeg, etc.) not found. Installing..."
-    # RunPod pods run as root, so sudo is generally not needed/available
+    echo "📦 System dependencies not found. Installing..."
     apt-get update && apt-get install -y \
         git \
         ffmpeg \
@@ -41,19 +38,17 @@ else
     echo "✅ System dependencies (ffmpeg) are already installed."
 fi
 
-# 3. Python virtual environment setup
-# NOTE: Do NOT use --system-site-packages to avoid torchaudio/torch version conflicts
-# between the system-installed packages and the venv packages.
+# 3. 파이썬 가상환경(venv) 생성 및 활성화
 if [ -d "venv" ]; then
     echo "🐍 Virtual environment 'venv' already exists. Activating..."
     source venv/bin/activate
 else
-    echo "🐍 Creating new python virtual environment 'venv' (isolated, no system-site-packages)..."
+    echo "🐍 Creating new python virtual environment 'venv'..."
     python3 -m venv venv
     source venv/bin/activate
 fi
 
-# Ensure system-site-packages are disabled in the venv configuration to prevent bleed-in
+# 시스템 패키지가 venv로 유입되는 것 차단
 python3 -c "
 import os
 cfg = 'venv/pyvenv.cfg'
@@ -67,59 +62,68 @@ if os.path.exists(cfg):
             else:
                 f.write(line)
 "
-
-# Prevent the system-installed torchaudio/torch from bleeding into the venv
-# by unsetting PYTHONPATH so only the venv site-packages are used.
 unset PYTHONPATH
 
-# 4. Python packages installation
+# 4. 파이썬 패키지 설치
 echo "📦 Installing python dependencies..."
 pip install --upgrade pip
 
-# Install torch + torchaudio together first to guarantee version compatibility.
-# This installs them into the venv (isolated from /usr/local/lib/python3.12/dist-packages).
-TORCH_VER=$(python3 -c "import torch; print(torch.__version__)" 2>/dev/null || echo "")
-TORCHAUDIO_VER=$(python3 -c "import torchaudio; print(torchaudio.__version__)" 2>/dev/null || echo "")
+# 임시로 에러 종료를 끄고 torch 설치 여부 확인
+set +e
+HAS_TORCH=$(python3 -c "import torch, torchaudio; print('OK')" 2>/dev/null || echo "NO")
+set -e
 
-if [ -z "$TORCH_VER" ] || [ -z "$TORCHAUDIO_VER" ]; then
-    echo "🔧 Installing torch + torchaudio into venv (this ensures version compatibility)..."
-    # Install the CUDA 12.1 build of torch/torchaudio (matches RunPod's CUDA 12.x images).
-    # If your pod uses a different CUDA version, change the index URL accordingly.
-    pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu121
+if [ "$HAS_TORCH" = "NO" ]; then
+    echo "🔧 Installing torch + torchaudio into venv..."
+    # --no-cache-dir 옵션을 주어 설치 중 OOM(메모리 부족) 방지
+    pip install --no-cache-dir torch torchaudio --index-url https://download.pytorch.org/whl/cu121
 else
-    echo "✅ torch ($TORCH_VER) and torchaudio ($TORCHAUDIO_VER) already present in venv."
+    echo "✅ torch and torchaudio already present in venv."
 fi
 
-# Install remaining requirements, excluding torch/torchaudio/xformers (already handled above)
-grep -vE "^(torch|torchaudio|xformers)" requirements.txt > temp_requirements.txt
-pip install -r temp_requirements.txt
-rm temp_requirements.txt
+# 나머지 패키지 설치
+if [ -f "requirements.txt" ]; then
+    grep -vE "^(torch|torchaudio|xformers)" requirements.txt > temp_requirements.txt || true
+    pip install --no-cache-dir -r temp_requirements.txt
+    rm temp_requirements.txt
+fi
 
-# Install audiocraft without pulling in conflicting torch builds
+# audiocraft 및 xformers 안전하게 설치
 pip install --no-deps audiocraft
 
-# Check if xformers is available and fully compatible with PyTorch
-if ! python3 -c "import xformers; from xformers import ops" &> /dev/null; then
-    echo "🔧 xformers is missing or incompatible. Attempting to install compatible version (0.0.28.post3)..."
-    pip install xformers==0.0.28.post3 || pip install xformers || echo "⚠️ Failed to install xformers. Proceeding using native PyTorch attention."
+# xformers 존재 여부 및 호환성(임포트 에러 여부) 검사
+set +e
+HAS_XFORMERS=$(python3 -c "import xformers; from xformers import ops" 2>/dev/null || echo "NO")
+set -e
+
+if [ "$HAS_XFORMERS" = "NO" ]; then
+    echo "🔧 Installing compatible xformers..."
+    # PyTorch 2.5.1 호환 빌드인 0.0.28.post3를 설치합니다.
+    pip install --no-cache-dir xformers==0.0.28.post3 || pip install --no-cache-dir xformers || echo "⚠️ xformers 설치 실패. 기본 어텐션을 사용합니다."
 else
-    echo "✅ Compatible xformers is already installed."
+    echo "✅ 호환되는 xformers가 이미 설치되어 있습니다."
 fi
 
-# 5. Pre-download weights to persistent cache
+# 5. 모델 가중치 미리 다운로드
 echo "📥 Pre-downloading model weights to persistent volume..."
 python3 -c "
 from huggingface_hub import snapshot_download
-print('Downloading facebook/musicgen-melody...')
-snapshot_download(repo_id='facebook/musicgen-melody')
-print('Downloading facebook/encodec_32khz...')
-snapshot_download(repo_id='facebook/encodec_32khz')
-print('Downloading google-t5/t5-base...')
-snapshot_download(repo_id='t5-base')
-print('✨ All models pre-downloaded successfully!')
+import sys
+
+try:
+    print('Downloading facebook/musicgen-melody...')
+    snapshot_download(repo_id='facebook/musicgen-melody')
+    print('Downloading facebook/encodec_32khz...')
+    snapshot_download(repo_id='facebook/encodec_32khz')
+    print('Downloading google-t5/t5-base...')
+    snapshot_download(repo_id='google-t5/t5-base')
+    print('✨ All models pre-downloaded successfully!')
+except Exception as e:
+    print(f'❌ Model download failed: {e}')
+    sys.exit(1)
 "
 
-# 6. Start FastAPI application
+# 6. FastAPI 애플리케이션 시작 (RunPod 외부 프록시 맵핑을 위해 8000 포트 유지)
 echo "========================================================="
 echo "🔥 Starting FastAPI Server on http://0.0.0.0:8000"
 echo "========================================================="
