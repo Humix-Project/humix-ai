@@ -41,33 +41,62 @@ else
     echo "✅ System dependencies (ffmpeg) are already installed."
 fi
 
-# 3. Python virtual environment setup with system packages
+# 3. Python virtual environment setup
+# NOTE: Do NOT use --system-site-packages to avoid torchaudio/torch version conflicts
+# between the system-installed packages and the venv packages.
 if [ -d "venv" ]; then
     echo "🐍 Virtual environment 'venv' already exists. Activating..."
     source venv/bin/activate
 else
-    echo "🐍 Creating new python virtual environment 'venv' with system site packages..."
-    python3 -m venv venv --system-site-packages
+    echo "🐍 Creating new python virtual environment 'venv' (isolated, no system-site-packages)..."
+    python3 -m venv venv
     source venv/bin/activate
 fi
+
+# Ensure system-site-packages are disabled in the venv configuration to prevent bleed-in
+python3 -c "
+import os
+cfg = 'venv/pyvenv.cfg'
+if os.path.exists(cfg):
+    with open(cfg, 'r') as f:
+        lines = f.readlines()
+    with open(cfg, 'w') as f:
+        for line in lines:
+            if line.strip().startswith('include-system-site-packages'):
+                f.write('include-system-site-packages = false\n')
+            else:
+                f.write(line)
+"
+
+# Prevent the system-installed torchaudio/torch from bleeding into the venv
+# by unsetting PYTHONPATH so only the venv site-packages are used.
+unset PYTHONPATH
 
 # 4. Python packages installation
 echo "📦 Installing python dependencies..."
 pip install --upgrade pip
 
-# Filter out torch, torchaudio, and xformers to prevent pip from rebuilding/reinstalling them
+# Install torch + torchaudio together first to guarantee version compatibility.
+# This installs them into the venv (isolated from /usr/local/lib/python3.12/dist-packages).
+TORCH_VER=$(python3 -c "import torch; print(torch.__version__)" 2>/dev/null || echo "")
+TORCHAUDIO_VER=$(python3 -c "import torchaudio; print(torchaudio.__version__)" 2>/dev/null || echo "")
+
+if [ -z "$TORCH_VER" ] || [ -z "$TORCHAUDIO_VER" ]; then
+    echo "🔧 Installing torch + torchaudio into venv (this ensures version compatibility)..."
+    # Install the CUDA 12.1 build of torch/torchaudio (matches RunPod's CUDA 12.x images).
+    # If your pod uses a different CUDA version, change the index URL accordingly.
+    pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu121
+else
+    echo "✅ torch ($TORCH_VER) and torchaudio ($TORCHAUDIO_VER) already present in venv."
+fi
+
+# Install remaining requirements, excluding torch/torchaudio/xformers (already handled above)
 grep -vE "^(torch|torchaudio|xformers)" requirements.txt > temp_requirements.txt
 pip install -r temp_requirements.txt
 rm temp_requirements.txt
 
-# Install audiocraft
+# Install audiocraft without pulling in conflicting torch builds
 pip install --no-deps audiocraft
-
-# Verify if torch and torchaudio are available
-if ! python3 -c "import torch, torchaudio" &> /dev/null; then
-    echo "torch or torchaudio not found. Installing latest stable version..."
-    pip install torch torchaudio
-fi
 
 # Try to install compatible xformers, but do not fail if it cannot be installed
 if ! python3 -c "import xformers" &> /dev/null; then
@@ -76,7 +105,6 @@ if ! python3 -c "import xformers" &> /dev/null; then
     if [ "$PY_VER" = "3.10" ] || [ "$PY_VER" = "3.11" ]; then
         pip install xformers==0.0.22.post7 || echo "⚠️ Failed to install pinned xformers. Proceeding using native PyTorch attention."
     else
-        # For Python 3.12+, let pip resolve a compatible version
         pip install xformers || echo "⚠️ Failed to install xformers. Proceeding using native PyTorch attention."
     fi
 else
