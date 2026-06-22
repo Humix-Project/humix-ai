@@ -9,7 +9,7 @@ COPY vector_service.py /vector_service.py
 
 CMD [ "python", "-c", "print('Docker smoke image built successfully')" ]
 
-FROM pytorch/pytorch:2.6.0-cuda12.6-cudnn9-runtime AS runtime
+FROM pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime AS runtime
 
 WORKDIR /
 
@@ -34,7 +34,7 @@ RUN apt-get update && apt-get install -y \
 
 COPY requirements.txt /requirements.txt
 RUN pip install --no-cache-dir -r /requirements.txt
-RUN pip install --no-cache-dir xformers==0.0.29.post3
+RUN pip install --no-cache-dir xformers==0.0.28.post3
 RUN pip install --no-cache-dir --no-deps audiocraft
 
 # Set up cache directory environment variables inside the container
