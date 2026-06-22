@@ -98,17 +98,12 @@ rm temp_requirements.txt
 # Install audiocraft without pulling in conflicting torch builds
 pip install --no-deps audiocraft
 
-# Try to install compatible xformers, but do not fail if it cannot be installed
-if ! python3 -c "import xformers" &> /dev/null; then
-    echo "xformers not found. Attempting to install xformers..."
-    PY_VER=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
-    if [ "$PY_VER" = "3.10" ] || [ "$PY_VER" = "3.11" ]; then
-        pip install xformers==0.0.22.post7 || echo "⚠️ Failed to install pinned xformers. Proceeding using native PyTorch attention."
-    else
-        pip install xformers || echo "⚠️ Failed to install xformers. Proceeding using native PyTorch attention."
-    fi
+# Check if xformers is available and fully compatible with PyTorch
+if ! python3 -c "import xformers; from xformers import ops" &> /dev/null; then
+    echo "🔧 xformers is missing or incompatible. Attempting to install compatible version (0.0.28.post3)..."
+    pip install xformers==0.0.28.post3 || pip install xformers || echo "⚠️ Failed to install xformers. Proceeding using native PyTorch attention."
 else
-    echo "✅ xformers is already installed."
+    echo "✅ Compatible xformers is already installed."
 fi
 
 # 5. Pre-download weights to persistent cache
