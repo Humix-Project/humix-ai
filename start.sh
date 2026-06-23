@@ -76,7 +76,10 @@ set -e
 if [ "$HAS_TORCH" = "NO" ]; then
     echo "🔧 Installing torch + torchaudio into venv..."
     # --no-cache-dir 옵션을 주어 설치 중 OOM(메모리 부족) 방지
-    pip install --no-cache-dir torch torchaudio --index-url https://download.pytorch.org/whl/cu121
+    # RTX 5090 (Blackwell) 지원을 위해 CUDA 12.6 인덱스를 사용하며, 실패 시 CUDA 12.4나 기본 버전을 시도합니다.
+    pip install --no-cache-dir torch==2.6.0 torchaudio==2.6.0 --index-url https://download.pytorch.org/whl/cu126 || \
+    pip install --no-cache-dir torch==2.5.1 torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cu124 || \
+    pip install --no-cache-dir torch torchaudio
 else
     echo "✅ torch and torchaudio already present in venv."
 fi
@@ -98,8 +101,11 @@ set -e
 
 if [ "$HAS_XFORMERS" = "NO" ]; then
     echo "🔧 Installing compatible xformers..."
-    # PyTorch 2.5.1 호환 빌드인 0.0.28.post3를 설치합니다.
-    pip install --no-cache-dir xformers==0.0.28.post3 || pip install --no-cache-dir xformers || echo "⚠️ xformers 설치 실패. 기본 어텐션을 사용합니다."
+    # PyTorch 2.6.0 호환 빌드인 0.0.29.post3 또는 PyTorch 2.5.1 호환 빌드인 0.0.28.post3를 설치합니다.
+    pip install --no-cache-dir xformers==0.0.29.post3 || \
+    pip install --no-cache-dir xformers==0.0.28.post3 || \
+    pip install --no-cache-dir xformers || \
+    echo "⚠️ xformers 설치 실패. 기본 어텐션을 사용합니다."
 else
     echo "✅ 호환되는 xformers가 이미 설치되어 있습니다."
 fi
