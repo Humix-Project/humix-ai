@@ -64,6 +64,26 @@ class TestAIServerAPI(unittest.TestCase):
             timeout=10
         )
 
+    @patch('app.load_model')
+    @patch('app.convert_vectors_to_wav_tensor')
+    @patch('app.upload_via_presigned_url')
+    @patch('requests.post')
+    def test_generate_songs_sends_failed_callback_when_melody_conversion_fails(self, mock_post, mock_upload_presigned, mock_convert, mock_load_model):
+        mock_convert.side_effect = ValueError("melody_vectors has no pitched notes.")
+        mock_model = MagicMock()
+        app.model = mock_model
+
+        response = self.client.post("/internal/v1/ai/generation/songs", json=self.generation_payload())
+
+        self.assertEqual(response.status_code, 202)
+        mock_model.generate_with_chroma.assert_not_called()
+        mock_upload_presigned.assert_not_called()
+        mock_post.assert_called_once_with(
+            "https://backend.com/api/v1/internal/callbacks/generation",
+            json={"generated_audio_url": "FAILED"},
+            timeout=10
+        )
+
     def test_generate_songs_rejects_invalid_duration(self):
         for duration in (None, 0, -1, 30.5):
             payload = self.generation_payload()

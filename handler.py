@@ -94,21 +94,6 @@ def convert_vectors_to_wav_tensor(melody_vectors, sample_rate=16000):
     melody_wav = torch.tensor(audio_data, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
     return melody_wav
 
-def synthesize_sine_fallback(melody_vectors, sample_rate=16000):
-    try:
-        print("Using sine wave fallback synthesizer...")
-        duration = sum(v.get('duration_seconds', 0.5) for v in melody_vectors)
-        if duration <= 0:
-            duration = 5.0
-        t = np.linspace(0, duration, int(sample_rate * duration), endpoint=False)
-        audio_data = 0.5 * np.sin(2 * np.pi * 440 * t)
-        return torch.tensor(audio_data, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
-    except Exception as e:
-        print(f"Fallback synthesis failed: {e}")
-        t = np.linspace(0, 5.0, int(sample_rate * 5.0), endpoint=False)
-        audio_data = 0.5 * np.sin(2 * np.pi * 440 * t)
-        return torch.tensor(audio_data, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
-
 def upload_via_presigned_url(local_path, presigned_url):
     print(f"Uploading output to S3 via presigned URL...")
     with open(local_path, "rb") as f:
@@ -170,13 +155,9 @@ def handle_music_generation(job_input, job_id, action):
         description = build_description(genre, mood, prompt)
         print(f"Text condition: {description}")
 
-        # 1. Convert melody vectors to audio tensor (with fallback)
-        try:
-            melody_wav = convert_vectors_to_wav_tensor(melody_vectors, sample_rate=16000)
-        except Exception as e:
-            print(f"convert_vectors_to_wav_tensor failed: {e}. Falling back.")
-            melody_wav = synthesize_sine_fallback(melody_vectors, sample_rate=16000)
-            
+        # 1. Convert melody vectors to audio tensor (failure goes to the FAILED callback)
+        melody_wav = convert_vectors_to_wav_tensor(melody_vectors, sample_rate=16000)
+
         device = model.device if hasattr(model, 'device') else ("cuda" if torch.cuda.is_available() else "cpu")
         melody_wav = melody_wav.to(device)
         
