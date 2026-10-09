@@ -27,6 +27,7 @@ from vector_processor import MelodyProcessor
 # MusicGen switches to extended generation beyond 30 seconds
 MAX_DURATION_SECONDS = 30
 MODIFY_DURATION_SECONDS = 30
+OUTPUT_SAMPLE_RATE = 32000
 
 # Initialize models globally
 model = None
@@ -187,22 +188,25 @@ def handle_music_generation(job_input, job_id, action):
         
         # 4. Save output locally
         output_wav = outputs[0].cpu()
-        torchaudio.save(local_output_path, output_wav, 32000)
-        
+        torchaudio.save(local_output_path, output_wav, OUTPUT_SAMPLE_RATE)
+        output_duration_seconds = output_wav.shape[-1] / OUTPUT_SAMPLE_RATE
+
         # 5. Upload via presigned URL
         upload_via_presigned_url(local_output_path, presigned_url)
-        
+
         # 6. Callback backend (Success)
         clean_audio_url = presigned_url.split('?')[0]
         callback_payload = {
-            "generated_audio_url": clean_audio_url
+            "generated_audio_url": clean_audio_url,
+            "duration_seconds": output_duration_seconds
         }
-        print(f"Calling backend callback: {callback_url}")
+        print(f"Calling backend callback: {callback_url} (duration_seconds={output_duration_seconds})")
         requests.post(callback_url, json=callback_payload, timeout=10)
-        
+
         return {
             "status": "COMPLETED",
-            "generated_audio_url": clean_audio_url
+            "generated_audio_url": clean_audio_url,
+            "duration_seconds": output_duration_seconds
         }
         
     except Exception as e:
