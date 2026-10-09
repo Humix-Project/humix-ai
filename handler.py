@@ -18,10 +18,16 @@ import torch
 import torchaudio
 import pretty_midi
 import numpy as np
+import math
 import os
 import requests
 from audiocraft.models import MusicGen
 from vector_processor import MelodyProcessor
+
+# MusicGen switches to extended generation beyond 30 seconds
+MAX_DURATION_SECONDS = 30
+MODIFY_DURATION_SECONDS = 30
+OUTPUT_SAMPLE_RATE = 32000
 
 # Initialize models globally
 model = None
@@ -51,7 +57,8 @@ def convert_vectors_to_wav_tensor(melody_vectors, sample_rate=16000):
     pm = pretty_midi.PrettyMIDI()
     piano_program = pretty_midi.instrument_name_to_program('Acoustic Grand Piano')
     piano = pretty_midi.Instrument(program=piano_program)
-    
+    melody_end = 0.0
+
     for vector in melody_vectors:
         pitch = vector.get('pitch')
         onset = vector.get('onset_seconds') if vector.get('onset_seconds') is not None else vector.get('start_time_seconds')
@@ -59,7 +66,13 @@ def convert_vectors_to_wav_tensor(melody_vectors, sample_rate=16000):
             onset = 0.0
         duration = vector.get('duration_seconds', 0.5)
         end = onset + duration
-        
+        # Rests still count toward the melody length
+        melody_end = max(melody_end, end)
+
+        # pitch 0 is a rest; synthesizing it would produce an 8.18Hz full-amplitude tone
+        if pitch == 0:
+            continue
+
         note = pretty_midi.Note(
             velocity=100,
             pitch=pitch,
@@ -67,26 +80,19 @@ def convert_vectors_to_wav_tensor(melody_vectors, sample_rate=16000):
             end=end
         )
         piano.notes.append(note)
-        
+
+    if not piano.notes:
+        raise ValueError("melody_vectors has no pitched notes.")
+
     pm.instruments.append(piano)
     audio_data = pm.synthesize(fs=sample_rate)
+    # Cut the ~1s release tail so the melody loops with the humming length
+    melody_samples = round(melody_end * sample_rate)
+    audio_data = audio_data[:melody_samples]
+    if len(audio_data) < melody_samples:
+        audio_data = np.pad(audio_data, (0, melody_samples - len(audio_data)))
     melody_wav = torch.tensor(audio_data, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
     return melody_wav
-
-def synthesize_sine_fallback(melody_vectors, sample_rate=16000):
-    try:
-        print("Using sine wave fallback synthesizer...")
-        duration = sum(v.get('duration_seconds', 0.5) for v in melody_vectors)
-        if duration <= 0:
-            duration = 5.0
-        t = np.linspace(0, duration, int(sample_rate * duration), endpoint=False)
-        audio_data = 0.5 * np.sin(2 * np.pi * 440 * t)
-        return torch.tensor(audio_data, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
-    except Exception as e:
-        print(f"Fallback synthesis failed: {e}")
-        t = np.linspace(0, 5.0, int(sample_rate * 5.0), endpoint=False)
-        audio_data = 0.5 * np.sin(2 * np.pi * 440 * t)
-        return torch.tensor(audio_data, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
 
 def upload_via_presigned_url(local_path, presigned_url):
     print(f"Uploading output to S3 via presigned URL...")
@@ -94,73 +100,101 @@ def upload_via_presigned_url(local_path, presigned_url):
         res = requests.put(presigned_url, data=f, headers={"Content-Type": "audio/wav"})
         res.raise_for_status()
 
-def handle_music_generation(job_input, job_id):
-    load_model()
+def parse_duration_seconds(value):
+    # bool is a subclass of int, so reject it explicitly
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+        raise ValueError(f"duration_seconds must be a number, got: {value!r}")
+    if not 0 < value <= MAX_DURATION_SECONDS:
+        raise ValueError(f"duration_seconds must be in (0, {MAX_DURATION_SECONDS}], got: {value}")
+    return float(value)
+
+def build_description(genre, mood, prompt):
+    # MusicGen takes a single text description per sample
+    description = f"{genre}, {mood}"
+    if prompt and prompt.strip():
+        description += f", {prompt.strip()}"
+    return description
+
+def send_failure_callback(callback_url):
+    try:
+        requests.post(callback_url, json={"generated_audio_url": "FAILED"}, timeout=10)
+    except Exception as cb_err:
+        print(f"Failed to send failure callback: {cb_err}")
+
+def handle_music_generation(job_input, job_id, action):
     task_id = job_input.get("task_id", job_id)
     melody_vectors = job_input.get("melody_vectors", [])
     genre = job_input.get("genre", "")
     mood = job_input.get("mood", "")
-    prompt = job_input.get("prompt", "")  # for modification
-    reference_track = job_input.get("reference_track", None)
+    prompt = job_input.get("prompt")
     callback_url = job_input.get("callback_url")
     presigned_url = job_input.get("presigned_url")
-    
+
     # Validation
     if not callback_url or not presigned_url:
         raise ValueError("Both callback_url and presigned_url are required.")
-        
+
+    # duration_seconds is required for generate; modify keeps the fixed default
+    if action == "generate":
+        try:
+            duration_seconds = parse_duration_seconds(job_input.get("duration_seconds"))
+        except ValueError as e:
+            error_msg = f"Invalid request: {e}"
+            print(error_msg)
+            send_failure_callback(callback_url)
+            return {
+                "status": "FAILED",
+                "error": error_msg
+            }
+    else:
+        duration_seconds = MODIFY_DURATION_SECONDS
+
+    load_model()
     local_output_path = f"/tmp/{task_id}.wav"
     try:
-        # Resolve prompt
-        if not prompt:
-            prompt = f"{genre}, {mood}"
-            if reference_track:
-                prompt += f", in the style of {reference_track}"
-                
-        # 1. Convert melody vectors to audio tensor (with fallback)
-        try:
-            melody_wav = convert_vectors_to_wav_tensor(melody_vectors, sample_rate=16000)
-        except Exception as e:
-            print(f"convert_vectors_to_wav_tensor failed: {e}. Falling back.")
-            melody_wav = synthesize_sine_fallback(melody_vectors, sample_rate=16000)
-            
+        description = build_description(genre, mood, prompt)
+        print(f"Text condition: {description}")
+
+        # 1. Convert melody vectors to audio tensor (failure goes to the FAILED callback)
+        melody_wav = convert_vectors_to_wav_tensor(melody_vectors, sample_rate=16000)
+
         device = model.device if hasattr(model, 'device') else ("cuda" if torch.cuda.is_available() else "cpu")
         melody_wav = melody_wav.to(device)
         
         # 2. Setup generation parameters
-        model.set_generation_params(duration=30)
+        model.set_generation_params(duration=duration_seconds)
         
         # 3. Generate music
-        outputs = model.generate_with_chroma([prompt], melody_wav, 16000)
+        outputs = model.generate_with_chroma([description], melody_wav, 16000)
         
         # 4. Save output locally
         output_wav = outputs[0].cpu()
-        torchaudio.save(local_output_path, output_wav, 32000)
-        
+        torchaudio.save(local_output_path, output_wav, OUTPUT_SAMPLE_RATE)
+        output_duration_seconds = output_wav.shape[-1] / OUTPUT_SAMPLE_RATE
+
         # 5. Upload via presigned URL
         upload_via_presigned_url(local_output_path, presigned_url)
-        
+
         # 6. Callback backend (Success)
         clean_audio_url = presigned_url.split('?')[0]
         callback_payload = {
-            "generated_audio_url": clean_audio_url
+            "generated_audio_url": clean_audio_url,
+            "duration_seconds": output_duration_seconds
         }
-        print(f"Calling backend callback: {callback_url}")
+        print(f"Calling backend callback: {callback_url} (duration_seconds={output_duration_seconds})")
         requests.post(callback_url, json=callback_payload, timeout=10)
-        
+
         return {
             "status": "COMPLETED",
-            "generated_audio_url": clean_audio_url
+            "generated_audio_url": clean_audio_url,
+            "duration_seconds": output_duration_seconds
         }
         
     except Exception as e:
         error_msg = f"Generation failed: {str(e)}"
         print(error_msg)
         # Send failure callback to prevent backend hanging
-        try:
-            requests.post(callback_url, json={"generated_audio_url": "FAILED"}, timeout=10)
-        except Exception as cb_err:
-            print(f"Failed to send failure callback: {cb_err}")
+        send_failure_callback(callback_url)
         return {
             "status": "FAILED",
             "error": error_msg
@@ -190,7 +224,7 @@ def handler(job):
     if action == "melody-extract":
         return handle_melody_extraction(job_input)
     elif action in ["generate", "modify"]:
-        return handle_music_generation(job_input, job.get("id"))
+        return handle_music_generation(job_input, job.get("id"), action)
     else:
         return {
             "status": "FAILED",

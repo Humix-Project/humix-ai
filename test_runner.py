@@ -11,6 +11,8 @@ from botocore.config import Config
 BASE_URL = os.environ.get("AI_SERVER_URL", "https://xwu92nte3h7pdq-8000.proxy.runpod.net")
 BUCKET_NAME = os.environ.get("S3_BUCKET_NAME", "aws-humix-server-s3")
 REGION = os.environ.get("AWS_REGION", "ap-northeast-2")
+GEN_DURATION_SECONDS = float(os.environ.get("GEN_DURATION_SECONDS", "10"))
+DURATION_TOLERANCE_SECONDS = 0.1
 
 # Use a unique bucket ID for kvdb.io callbacks
 BUCKET_ID = f"humix_test_{uuid.uuid4().hex[:12]}"
@@ -108,7 +110,8 @@ def test_async_generation(task_id, presigned_url, callback_url):
         ],
         "genre": "pop",
         "mood": "happy",
-        "reference_track": "Attention",
+        "prompt": None,
+        "duration_seconds": GEN_DURATION_SECONDS,
         "callback_url": callback_url,
         "presigned_url": presigned_url
     }
@@ -139,6 +142,8 @@ def test_async_modification(task_id, presigned_url, callback_url):
         "melody_vectors": [
             {"pitch": 62, "onset_seconds": 0.0, "start_time_seconds": 0.0, "duration_seconds": 1.5}
         ],
+        "genre": "pop",
+        "mood": "happy",
         "prompt": "Make it sound more rocky with electric guitars",
         "callback_url": callback_url,
         "presigned_url": presigned_url
@@ -162,7 +167,7 @@ def test_async_modification(task_id, presigned_url, callback_url):
         print(f"  Connection error: {e}")
     return False
 
-def poll_results(task_id, object_key, description):
+def poll_results(task_id, object_key, description, expected_duration=None):
     callback_poll_url = f"{KVDB_BASE}/{task_id}"
     print(f"\n[*] Monitoring {description} task (ID: {task_id})...")
     
@@ -182,6 +187,12 @@ def poll_results(task_id, object_key, description):
                     if "FAILED" in res.text:
                         print(f"      [!] Task reported FAILURE inside the callback.")
                         return False
+                    if expected_duration is not None:
+                        actual_duration = res.json().get("duration_seconds")
+                        if actual_duration is None or abs(actual_duration - expected_duration) > DURATION_TOLERANCE_SECONDS:
+                            print(f"      [!] duration_seconds {actual_duration} is not within ±{DURATION_TOLERANCE_SECONDS}s of {expected_duration}.")
+                            return False
+                        print(f"      duration_seconds {actual_duration} matches requested {expected_duration}.")
             except Exception as e:
                 print(f"      Error checking callback: {e}")
                 
@@ -233,11 +244,8 @@ if __name__ == "__main__":
         gen_callback = f"{KVDB_BASE}/{gen_task_id}"
         
         gen_ok = False
-        if gen_presigned and test_async_generation(gen_task_id, gen_s3_key, gen_callback):
-            # Pass gen_s3_key as we generate presigned URL inside the AI server or directly upload
-            # Wait, the presigned URL is generated locally
-            # In test_async_generation we pass gen_presigned
-            gen_ok = poll_results(gen_task_id, gen_s3_key, "Music Generation")
+        if gen_presigned and test_async_generation(gen_task_id, gen_presigned, gen_callback):
+            gen_ok = poll_results(gen_task_id, gen_s3_key, "Music Generation", expected_duration=GEN_DURATION_SECONDS)
             
         # Wait a bit before starting the next task to ensure they don't overlap
         time.sleep(15)

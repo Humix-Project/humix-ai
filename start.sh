@@ -92,7 +92,7 @@ if [ -f "requirements.txt" ]; then
 fi
 
 # audiocraft 및 xformers 안전하게 설치
-pip install --no-deps audiocraft
+pip install --no-deps audiocraft==1.3.0
 
 # xformers 존재 여부 및 호환성(임포트 에러 여부) 검사
 set +e

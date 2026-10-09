@@ -35,7 +35,7 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt /requirements.txt
 RUN pip install --no-cache-dir -r /requirements.txt
 RUN pip install --no-cache-dir xformers==0.0.29.post3
-RUN pip install --no-cache-dir --no-deps audiocraft
+RUN pip install --no-cache-dir --no-deps audiocraft==1.3.0
 
 # Set up cache directory environment variables inside the container
 ENV HF_HOME=/cache/huggingface
