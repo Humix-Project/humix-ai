@@ -18,10 +18,15 @@ import torch
 import torchaudio
 import pretty_midi
 import numpy as np
+import math
 import os
 import requests
 from audiocraft.models import MusicGen
 from vector_processor import MelodyProcessor
+
+# MusicGen switches to extended generation beyond 30 seconds
+MAX_DURATION_SECONDS = 30
+MODIFY_DURATION_SECONDS = 30
 
 # Initialize models globally
 model = None
@@ -94,29 +99,55 @@ def upload_via_presigned_url(local_path, presigned_url):
         res = requests.put(presigned_url, data=f, headers={"Content-Type": "audio/wav"})
         res.raise_for_status()
 
-def handle_music_generation(job_input, job_id):
-    load_model()
+def parse_duration_seconds(value):
+    # bool is a subclass of int, so reject it explicitly
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+        raise ValueError(f"duration_seconds must be a number, got: {value!r}")
+    if not 0 < value <= MAX_DURATION_SECONDS:
+        raise ValueError(f"duration_seconds must be in (0, {MAX_DURATION_SECONDS}], got: {value}")
+    return float(value)
+
+def send_failure_callback(callback_url):
+    try:
+        requests.post(callback_url, json={"generated_audio_url": "FAILED"}, timeout=10)
+    except Exception as cb_err:
+        print(f"Failed to send failure callback: {cb_err}")
+
+def handle_music_generation(job_input, job_id, action):
     task_id = job_input.get("task_id", job_id)
     melody_vectors = job_input.get("melody_vectors", [])
     genre = job_input.get("genre", "")
     mood = job_input.get("mood", "")
     prompt = job_input.get("prompt", "")  # for modification
-    reference_track = job_input.get("reference_track", None)
     callback_url = job_input.get("callback_url")
     presigned_url = job_input.get("presigned_url")
-    
+
     # Validation
     if not callback_url or not presigned_url:
         raise ValueError("Both callback_url and presigned_url are required.")
-        
+
+    # duration_seconds is required for generate; modify keeps the fixed default
+    if action == "generate":
+        try:
+            duration_seconds = parse_duration_seconds(job_input.get("duration_seconds"))
+        except ValueError as e:
+            error_msg = f"Invalid request: {e}"
+            print(error_msg)
+            send_failure_callback(callback_url)
+            return {
+                "status": "FAILED",
+                "error": error_msg
+            }
+    else:
+        duration_seconds = MODIFY_DURATION_SECONDS
+
+    load_model()
     local_output_path = f"/tmp/{task_id}.wav"
     try:
         # Resolve prompt
         if not prompt:
             prompt = f"{genre}, {mood}"
-            if reference_track:
-                prompt += f", in the style of {reference_track}"
-                
+
         # 1. Convert melody vectors to audio tensor (with fallback)
         try:
             melody_wav = convert_vectors_to_wav_tensor(melody_vectors, sample_rate=16000)
@@ -128,7 +159,7 @@ def handle_music_generation(job_input, job_id):
         melody_wav = melody_wav.to(device)
         
         # 2. Setup generation parameters
-        model.set_generation_params(duration=30)
+        model.set_generation_params(duration=duration_seconds)
         
         # 3. Generate music
         outputs = model.generate_with_chroma([prompt], melody_wav, 16000)
@@ -157,10 +188,7 @@ def handle_music_generation(job_input, job_id):
         error_msg = f"Generation failed: {str(e)}"
         print(error_msg)
         # Send failure callback to prevent backend hanging
-        try:
-            requests.post(callback_url, json={"generated_audio_url": "FAILED"}, timeout=10)
-        except Exception as cb_err:
-            print(f"Failed to send failure callback: {cb_err}")
+        send_failure_callback(callback_url)
         return {
             "status": "FAILED",
             "error": error_msg
@@ -190,7 +218,7 @@ def handler(job):
     if action == "melody-extract":
         return handle_melody_extraction(job_input)
     elif action in ["generate", "modify"]:
-        return handle_music_generation(job_input, job.get("id"))
+        return handle_music_generation(job_input, job.get("id"), action)
     else:
         return {
             "status": "FAILED",
