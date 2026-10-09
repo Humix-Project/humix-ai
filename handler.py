@@ -107,6 +107,13 @@ def parse_duration_seconds(value):
         raise ValueError(f"duration_seconds must be in (0, {MAX_DURATION_SECONDS}], got: {value}")
     return float(value)
 
+def build_description(genre, mood, prompt):
+    # MusicGen takes a single text description per sample
+    description = f"{genre}, {mood}"
+    if prompt and prompt.strip():
+        description += f", {prompt.strip()}"
+    return description
+
 def send_failure_callback(callback_url):
     try:
         requests.post(callback_url, json={"generated_audio_url": "FAILED"}, timeout=10)
@@ -118,7 +125,7 @@ def handle_music_generation(job_input, job_id, action):
     melody_vectors = job_input.get("melody_vectors", [])
     genre = job_input.get("genre", "")
     mood = job_input.get("mood", "")
-    prompt = job_input.get("prompt", "")  # for modification
+    prompt = job_input.get("prompt")
     callback_url = job_input.get("callback_url")
     presigned_url = job_input.get("presigned_url")
 
@@ -144,9 +151,8 @@ def handle_music_generation(job_input, job_id, action):
     load_model()
     local_output_path = f"/tmp/{task_id}.wav"
     try:
-        # Resolve prompt
-        if not prompt:
-            prompt = f"{genre}, {mood}"
+        description = build_description(genre, mood, prompt)
+        print(f"Text condition: {description}")
 
         # 1. Convert melody vectors to audio tensor (with fallback)
         try:
@@ -162,7 +168,7 @@ def handle_music_generation(job_input, job_id, action):
         model.set_generation_params(duration=duration_seconds)
         
         # 3. Generate music
-        outputs = model.generate_with_chroma([prompt], melody_wav, 16000)
+        outputs = model.generate_with_chroma([description], melody_wav, 16000)
         
         # 4. Save output locally
         output_wav = outputs[0].cpu()
