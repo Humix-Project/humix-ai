@@ -1,2 +1,8 @@
 # Ignore the references directory containing design documents and PDFs
 references/
+
+# Prompt comparison outputs (issue #15)
+experiments/prompt_compare/outputs/
+
+# Local secrets (API keys)
+.env
