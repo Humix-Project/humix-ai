@@ -22,6 +22,9 @@ from dotenv import load_dotenv
 
 from prompt_builder import STRATEGIES, build_description
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from make_report import build_report
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 MELODY_SAMPLE_RATE = 16000
 
@@ -147,6 +150,7 @@ def main():
         writer.writerows(rows)
     with open(os.path.join(run_dir, "config.json"), "w", encoding="utf-8") as f:
         json.dump({"inputs": inputs, "strategies": args.strategies, "cases": [c["id"] for c in cases]}, f, ensure_ascii=False, indent=2)
+    print(f"Report: {build_report(run_dir)}")
     print(f"Done. Results in {run_dir}")
 
 
