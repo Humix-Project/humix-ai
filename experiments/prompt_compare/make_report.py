@@ -50,7 +50,7 @@ def audio_tag(path):
         return '<span class="time">(오디오 없음)</span>'
     with open(path, "rb") as f:
         encoded = base64.b64encode(f.read()).decode("ascii")
-    return f'<audio controls preload="none" src="data:audio/wav;base64,{encoded}"></audio>'
+    return f'<audio controls preload="metadata" src="data:audio/wav;base64,{encoded}"></audio>'
 
 
 def highlight_unknown(text):
