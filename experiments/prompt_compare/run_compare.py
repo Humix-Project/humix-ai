@@ -18,6 +18,8 @@ from datetime import datetime
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 sys.path.insert(0, ROOT_DIR)
 
+from dotenv import load_dotenv
+
 from prompt_builder import STRATEGIES, build_description
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -50,12 +52,19 @@ def parse_args():
     parser.add_argument("--out-dir", default=os.path.join(HERE, "outputs"))
     parser.add_argument("--device", default="auto", choices=["auto", "cuda", "mps", "cpu"], help="auto: cuda > mps > cpu")
     parser.add_argument("--duration", type=float, help="override duration_seconds from inputs (shorter is faster on a laptop)")
+    parser.add_argument("--no-cache", action="store_true", help="always call the LLM (to measure real latency)")
     parser.add_argument("--dry-run", action="store_true", help="only print the text conditions, skip generation")
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
+    # GEMINI_API_KEY for the LLM strategies
+    load_dotenv(os.path.join(ROOT_DIR, ".env"))
+    if not args.no_cache:
+        # Reuse earlier LLM answers so re-runs don't spend free-tier requests
+        os.makedirs(args.out_dir, exist_ok=True)
+        os.environ.setdefault("GEMINI_CACHE_PATH", os.path.join(args.out_dir, "llm_cache.json"))
     with open(args.inputs, encoding="utf-8") as f:
         inputs = json.load(f)
 
@@ -103,7 +112,7 @@ def main():
             start = time.perf_counter()
             description = build_description(case["genre"], case["mood"], case["prompt"], strategy=strategy)
             build_ms = (time.perf_counter() - start) * 1000
-            print(f"[{case['id']}][{strategy}] {description}")
+            print(f"[{case['id']}][{strategy}] ({build_ms:.0f}ms) {description}")
 
             row = {
                 "case_id": case["id"],

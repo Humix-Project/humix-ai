@@ -103,6 +103,23 @@ class TestAIServerAPI(unittest.TestCase):
         with self.assertRaises(ValueError):
             app.build_description("pop", "happy", None, strategy="unknown")
 
+    @patch('gemini_client.generate_text')
+    def test_llm_strategies(self, mock_generate):
+        mock_generate.return_value = "acoustic guitar, soft drums"
+        self.assertEqual(app.build_description("pop", "upbeat", "어쿠스틱 기타로", strategy="translate"), "pop, upbeat, acoustic guitar, soft drums")
+        self.assertEqual(
+            app.build_description("pop", "upbeat", "어쿠스틱 기타로", strategy="rewrite"),
+            "modern pop track, polished production, acoustic guitar, soft drums, upbeat, energetic and cheerful",
+        )
+        # English prompts skip translation; unknown genre/mood pass through
+        mock_generate.reset_mock()
+        self.assertEqual(app.build_description("k-pop", "dreamy", "with piano", strategy="translate"), "k-pop, dreamy, with piano")
+        mock_generate.assert_not_called()
+
+    @patch('gemini_client.generate_text', side_effect=RuntimeError("quota exceeded"))
+    def test_llm_failure_falls_back_to_simple(self, mock_generate):
+        self.assertEqual(app.build_description("pop", "sad", "감성적으로", strategy="rewrite"), "pop, sad, 감성적으로")
+
     def generation_payload(self):
         return {
             "task_id": "task_123",
