@@ -98,6 +98,10 @@ class TestAIServerAPI(unittest.TestCase):
         self.assertEqual(app.build_description("pop", "happy", None), "pop, happy")
         self.assertEqual(app.build_description("pop", "happy", "  "), "pop, happy")
         self.assertEqual(app.build_description("pop", "happy", "with piano"), "pop, happy, with piano")
+        # modify can arrive without genre/mood
+        self.assertEqual(app.build_description("", None, "with piano"), "with piano")
+        with self.assertRaises(ValueError):
+            app.build_description("pop", "happy", None, strategy="unknown")
 
     def generation_payload(self):
         return {

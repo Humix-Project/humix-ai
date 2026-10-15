@@ -6,6 +6,7 @@ COPY app.py /app.py
 COPY handler.py /handler.py
 COPY vector_processor.py /vector_processor.py
 COPY vector_service.py /vector_service.py
+COPY prompt_builder.py /prompt_builder.py
 
 CMD [ "python", "-c", "print('Docker smoke image built successfully')" ]
 
@@ -50,6 +51,7 @@ COPY app.py /app.py
 COPY handler.py /handler.py
 COPY vector_processor.py /vector_processor.py
 COPY vector_service.py /vector_service.py
+COPY prompt_builder.py /prompt_builder.py
 
 EXPOSE 8000
 
