@@ -66,9 +66,9 @@ def main():
     # GEMINI_API_KEY for the LLM strategies
     load_dotenv(os.path.join(ROOT_DIR, ".env"))
     if not args.no_cache:
-        # Reuse earlier LLM answers so re-runs don't spend free-tier requests
-        os.makedirs(args.out_dir, exist_ok=True)
-        os.environ.setdefault("GEMINI_CACHE_PATH", os.path.join(args.out_dir, "llm_cache.json"))
+        # Committed LLM answers: re-runs don't spend free-tier requests, and every machine
+        # (Mac, RunPod) compares the exact same text conditions without needing a key
+        os.environ.setdefault("GEMINI_CACHE_PATH", os.path.join(HERE, "llm_cache.json"))
     with open(args.inputs, encoding="utf-8") as f:
         inputs = json.load(f)
 
