@@ -7,6 +7,7 @@ Outputs go to experiments/prompt_compare/outputs/<run_id>/ (wav per case/strateg
 """
 import argparse
 import csv
+import gc
 import importlib.util
 import json
 import os
@@ -138,6 +139,15 @@ def main():
                 wav_name = f"{case['id']}__{strategy}.wav"
                 torchaudio.save(os.path.join(run_dir, wav_name), outputs[0].cpu(), OUTPUT_SAMPLE_RATE)
                 row["wav"] = wav_name
+                del outputs
+                if device == "mps":
+                    # MPS keeps freed blocks cached; on a 16GB Mac back-to-back runs otherwise end up in swap
+                    gc.collect()
+                    torch.mps.empty_cache()
+                    memory = f", mps {torch.mps.driver_allocated_memory() / 2**30:.1f}GB"
+                else:
+                    memory = ""
+                print(f"  generated {wav_name} in {row['generate_ms'] / 1000:.0f}s{memory}", flush=True)
 
             rows.append(row)
 
