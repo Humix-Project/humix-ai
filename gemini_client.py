@@ -72,14 +72,15 @@ def generate_text(system_instruction: str, user_text: str) -> str:
     GEMINI_MODEL overrides the model; GEMINI_CACHE_PATH (experiments only) reuses earlier answers
     so re-running a comparison does not spend free-tier requests again.
     """
-    from google.genai import errors, types
-
     model = os.environ.get("GEMINI_MODEL", DEFAULT_MODEL)
     cache_path = os.environ.get("GEMINI_CACHE_PATH")
     key = _cache_key(model, system_instruction, user_text)
     cached = _read_cache(cache_path, key)
     if cached is not None:
         return cached
+
+    # Imported after the cache check so cached runs work without google-genai installed
+    from google.genai import errors, types
 
     # Thinking is wasted on one-line rewrites; Gemini 3 Lite models take a level, others a budget
     thinking_config = types.ThinkingConfig(thinking_level="minimal")

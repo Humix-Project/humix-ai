@@ -19,8 +19,6 @@ from datetime import datetime
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 sys.path.insert(0, ROOT_DIR)
 
-from dotenv import load_dotenv
-
 from prompt_builder import STRATEGIES, build_description
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -63,8 +61,12 @@ def parse_args():
 
 def main():
     args = parse_args()
-    # GEMINI_API_KEY for the LLM strategies
-    load_dotenv(os.path.join(ROOT_DIR, ".env"))
+    # GEMINI_API_KEY for the LLM strategies; optional, cached answers need no key
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(os.path.join(ROOT_DIR, ".env"))
+    except ImportError:
+        pass
     if not args.no_cache:
         # Committed LLM answers: re-runs don't spend free-tier requests, and every machine
         # (Mac, RunPod) compares the exact same text conditions without needing a key
