@@ -1,0 +1,6 @@
+{"sample": "vector1", "hum_seconds": 5.0, "model": "stanford-crfm/music-medium-800k", "humming_notes": 6, "generated_notes": 65, "elapsed_seconds": 135.1, "file": "vector1_h5_extended.json"}
+{"sample": "vector1", "hum_seconds": 10.0, "model": "stanford-crfm/music-medium-800k", "humming_notes": 18, "generated_notes": 76, "elapsed_seconds": 163.5, "file": "vector1_h10_extended.json"}
+{"sample": "vector1", "hum_seconds": 20.0, "model": "stanford-crfm/music-medium-800k", "humming_notes": 40, "generated_notes": 30, "elapsed_seconds": 123.7, "file": "vector1_h20_extended.json"}
+{"sample": "vector2", "hum_seconds": 5.0, "model": "stanford-crfm/music-medium-800k", "humming_notes": 28, "generated_notes": 204, "elapsed_seconds": 1912.4, "file": "vector2_h5_extended.json"}
+{"sample": "vector2", "hum_seconds": 10.0, "model": "stanford-crfm/music-medium-800k", "humming_notes": 45, "generated_notes": 101, "elapsed_seconds": 149.1, "file": "vector2_h10_extended.json"}
+{"sample": "vector2", "hum_seconds": 20.0, "model": "stanford-crfm/music-medium-800k", "humming_notes": 66, "generated_notes": 22, "elapsed_seconds": 20.1, "file": "vector2_h20_extended.json"}
