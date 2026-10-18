@@ -1,16 +1,19 @@
 """Build a self-contained listening page (report.html) for one comparison run.
 
     python experiments/prompt_compare/make_report.py experiments/prompt_compare/outputs/<run_id>
+    # Smaller copy to commit or share (MP3 via ffmpeg)
+    python experiments/prompt_compare/make_report.py <run_dir> --mp3 --out <path>/report.html
 
 Audio is embedded as base64, so the single HTML file can be opened or shared anywhere.
 """
+import argparse
 import base64
 import csv
 import html
 import json
 import os
 import re
-import sys
+import subprocess
 
 STRATEGY_LABELS = {
     "simple": "지금 방식 (단순 조합)",
@@ -45,12 +48,22 @@ audio { width:100%; max-width:480px; height:36px; }
 """
 
 
-def audio_tag(path):
+def audio_tag(path, mp3=False):
     if not os.path.exists(path):
         return '<span class="time">(오디오 없음)</span>'
-    with open(path, "rb") as f:
-        encoded = base64.b64encode(f.read()).decode("ascii")
-    return f'<audio controls preload="metadata" src="data:audio/wav;base64,{encoded}"></audio>'
+    if mp3:
+        # 128kbps MP3 is ~1/5 of the 16-bit WAV size
+        data = subprocess.run(
+            ["ffmpeg", "-loglevel", "error", "-i", path, "-codec:a", "libmp3lame", "-b:a", "128k", "-f", "mp3", "pipe:1"],
+            check=True, capture_output=True,
+        ).stdout
+        mime = "audio/mpeg"
+    else:
+        with open(path, "rb") as f:
+            data = f.read()
+        mime = "audio/wav"
+    encoded = base64.b64encode(data).decode("ascii")
+    return f'<audio controls preload="metadata" src="data:{mime};base64,{encoded}"></audio>'
 
 
 def highlight_unknown(text):
@@ -58,7 +71,7 @@ def highlight_unknown(text):
     return NON_ASCII_RUN.sub(lambda m: f'<mark class="unk" title="MusicGen이 읽지 못함">{m.group(0)}</mark>', escaped)
 
 
-def build_report(run_dir):
+def build_report(run_dir, out_path=None, mp3=False):
     with open(os.path.join(run_dir, "results.csv"), encoding="utf-8-sig") as f:
         rows = list(csv.DictReader(f))
     with open(os.path.join(run_dir, "config.json"), encoding="utf-8") as f:
@@ -68,7 +81,8 @@ def build_report(run_dir):
     for row in rows:
         cases.setdefault(row["case_id"], []).append(row)
 
-    melody = audio_tag(os.path.join(run_dir, "melody.wav"))
+    # Every case shares the same melody, so it is embedded once at the top
+    melody = audio_tag(os.path.join(run_dir, "melody.wav"), mp3)
     sections = []
     for case_id, case_rows in cases.items():
         first = case_rows[0]
@@ -83,14 +97,13 @@ def build_report(run_dir):
       <div class="row">
         <h3>{html.escape(STRATEGY_LABELS.get(row["strategy"], row["strategy"]))}</h3>
         <div class="text">{highlight_unknown(row["description"])}</div>
-        {audio_tag(os.path.join(run_dir, row["wav"])) if row["wav"] else ""}
+        {audio_tag(os.path.join(run_dir, row["wav"]), mp3) if row["wav"] else ""}
         <div class="time">생성 {seconds}</div>
       </div>""")
         sections.append(f"""
     <section class="case">
       <h2>{html.escape(case_id)}</h2>
       <div class="input">{chips}</div>
-      <div class="melody">입력 멜로디 {melody}</div>
       {"".join(strategy_rows)}
     </section>""")
 
@@ -108,18 +121,23 @@ def build_report(run_dir):
   <h1>MusicGen 프롬프트 방식 비교</h1>
   <div class="meta">{html.escape(os.path.basename(os.path.normpath(run_dir)))} · {duration}초 · seed {config["inputs"].get("seed")} · 같은 조합은 같은 멜로디·시드로 생성</div>
   <div class="legend"><mark class="unk">빨간 표시</mark>는 MusicGen 텍스트 인코더(T5)가 읽지 못하고 버리는 부분이에요.</div>
+  <div class="melody">입력 멜로디 (모든 조합 공통) {melody}</div>
   {"".join(sections)}
 </main>
 </body>
 </html>
 """
-    out_path = os.path.join(run_dir, "report.html")
+    out_path = out_path or os.path.join(run_dir, "report.html")
+    os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
     with open(out_path, "w", encoding="utf-8") as f:
         f.write(page)
     return out_path
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        sys.exit("usage: make_report.py <run_dir>")
-    print(build_report(sys.argv[1]))
+    parser = argparse.ArgumentParser(description="Build report.html for a comparison run")
+    parser.add_argument("run_dir")
+    parser.add_argument("--out", help="output path (default: <run_dir>/report.html)")
+    parser.add_argument("--mp3", action="store_true", help="embed MP3 instead of WAV (needs ffmpeg)")
+    args = parser.parse_args()
+    print(build_report(args.run_dir, args.out, args.mp3))
