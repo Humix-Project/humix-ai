@@ -1,2 +1,6 @@
 # Ignore the references directory containing design documents and PDFs
 references/
+
+# Humming development comparison outputs (issue #14)
+experiments/humming_development/outputs/
+venv-amt/
