@@ -118,8 +118,8 @@ footer p { margin: 0; max-width: 80ch; }
 
 <script>
 const DURATION = 30;
-const SAMPLES = ['vector1', 'vector2'];
-const HUMS = [5, 10, 20];
+// vector1/2 are cropped to the first 5/10/20 s to simulate short hummings
+const ROWS = ['vector1', 'vector2'].flatMap(sample => [5, 10, 20].map(hum => ({ sample, hum, group: 'cropped' })));
 const METHODS = [
   { id: 'loop', name: '현재 방식', sub: 'loop', color: 'var(--loop)' },
   { id: 'two_stage', name: '후보 1', sub: '2단계 생성', color: 'var(--stage)' },
@@ -152,13 +152,21 @@ function ruler(hum) {
   return { node: el('div', { class: 'ruler', 'aria-hidden': 'true' }, [track, mark, ticks]), progress };
 }
 
-for (const sample of SAMPLES) {
-  for (const hum of HUMS) {
+for (const { sample, hum, group } of ROWS) {
+  {
     const base = `${sample}_h${hum}`;
     const humAudio = el('audio', { controls: '', preload: 'none', src: `audio/${base}_melody.mp3`, 'aria-label': `${sample} 허밍 ${hum}초 입력 멜로디` });
+    const inputs = el('div', { class: 'hum-input' });
+    if (group === 'recording') {
+      const original = el('audio', { controls: '', preload: 'none', src: `audio/${sample}_humming.mp3`, 'aria-label': `${sample} 원본 녹음` });
+      original.addEventListener('error', () => { original.previousSibling?.remove(); original.remove(); });
+      inputs.append(el('span', { text: '원본 녹음' }), original);
+      players.push({ audio: original, card: null });
+    }
+    inputs.append(el('span', { text: '허밍 입력' }), humAudio);
     const head = el('div', { class: 'row-head' }, [
       el('h2', {}, [document.createTextNode(`${sample}`), el('span', { class: 'mono', text: `허밍 ${hum}초 → 30초` })]),
-      el('div', { class: 'hum-input' }, [el('span', { text: '허밍 입력' }), humAudio]),
+      inputs,
     ]);
     const cards = el('div', { class: 'cards' });
     for (const m of METHODS) {
@@ -185,7 +193,7 @@ for (const sample of SAMPLES) {
       cards.append(card);
     }
     players.push({ audio: humAudio, card: null });
-    rowsEl.append(el('section', { class: 'row', 'data-sample': sample }, [head, cards]));
+    rowsEl.append(el('section', { class: 'row', 'data-group': group, 'data-sample': sample }, [head, cards]));
   }
 }
 

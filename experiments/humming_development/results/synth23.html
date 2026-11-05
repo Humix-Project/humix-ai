@@ -1,0 +1,189 @@
+<title>멜로디 합성 전후 비교</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: one row per recording; inputs strip (original / before / after), then three method cards each holding a before/after pair on the same 30 s ruler */
+:root {
+  --bg: #f5f6f8;
+  --surface: #ffffff;
+  --fg: #1b1f27;
+  --muted: #5d6573;
+  --line: #dde1e8;
+  --loop: #2f6fd6;
+  --stage: #b8690e;
+  --ext: #1f8a62;
+  --hum: #8a93a3;
+  --before: #9aa1ad;
+  --font-body: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12151b; --surface: #1a1e26; --fg: #e6e9ef; --muted: #9aa3b2; --line: #2b313c;
+    --loop: #6d9ef0; --stage: #e09a45; --ext: #4cc191; --hum: #6c7586; --before: #626b7a; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12151b; --surface: #1a1e26; --fg: #e6e9ef; --muted: #9aa3b2; --line: #2b313c;
+  --loop: #6d9ef0; --stage: #e09a45; --ext: #4cc191; --hum: #6c7586; --before: #626b7a; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 15px; line-height: 1.6; padding: 32px 20px 56px; }
+.wrap { max-width: 1120px; margin: 0 auto; display: grid; gap: 28px; }
+header { display: grid; gap: 10px; }
+h1 { font-size: 1.75rem; font-weight: 700; margin: 0; text-wrap: balance; letter-spacing: -0.01em; }
+.lede { margin: 0; color: var(--muted); max-width: 70ch; }
+.meta { font-family: var(--font-mono); font-size: 0.8rem; color: var(--muted); }
+.controls { display: flex; flex-wrap: wrap; gap: 10px 24px; align-items: center; font-size: 0.9rem; }
+.controls label { display: flex; gap: 8px; align-items: center; cursor: pointer; }
+.controls input { accent-color: var(--fg); width: 16px; height: 16px; }
+input:focus-visible, audio:focus-visible { outline: 2px solid var(--loop); outline-offset: 2px; }
+
+.row { display: grid; gap: 12px; padding-top: 20px; border-top: 1px solid var(--line); }
+.row h2 { font-size: 1.05rem; margin: 0; font-weight: 600; }
+.row h2 .mono { font-family: var(--font-mono); font-weight: 500; color: var(--muted); font-size: 0.9rem; margin-left: 6px; }
+.inputs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.input { display: grid; gap: 4px; min-width: 0; font-size: 0.82rem; color: var(--muted); }
+.input audio { width: 100%; height: 32px; }
+.cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-top: 3px solid var(--c); border-radius: 8px; padding: 14px; display: grid; gap: 10px; min-width: 0; }
+.card-title { font-weight: 600; font-size: 0.95rem; }
+.card-title span { font-weight: 400; color: var(--muted); font-size: 0.8rem; margin-left: 6px; }
+.take { display: grid; gap: 4px; padding: 8px 10px; border-radius: 6px; border: 1px solid transparent; }
+.take.playing { border-color: var(--c); }
+.take-head { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; font-size: 0.8rem; }
+.tag { font-weight: 600; }
+.tag.before { color: var(--muted); }
+.tag.after { color: var(--c); }
+.stat { font-family: var(--font-mono); font-size: 0.72rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.stat.warn { color: var(--stage); }
+.take audio { width: 100%; height: 34px; }
+.ruler { position: relative; height: 8px; }
+.track { position: absolute; inset: 0; border-radius: 3px; background: var(--line); overflow: hidden; }
+.hum-zone { position: absolute; left: 0; top: 0; bottom: 0; background: var(--hum); opacity: 0.45; }
+.progress { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: var(--c); }
+.take.before-take .progress { background: var(--before); }
+.hum-mark { position: absolute; top: -2px; height: 12px; width: 2px; background: var(--fg); }
+footer { font-size: 0.82rem; color: var(--muted); border-top: 1px solid var(--line); padding-top: 16px; display: grid; gap: 4px; }
+footer p { margin: 0; max-width: 80ch; }
+@media (max-width: 820px) {
+  .cards, .inputs { grid-template-columns: minmax(0, 1fr); }
+  h1 { font-size: 1.45rem; }
+}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>멜로디 합성 전후 비교</h1>
+    <p class="lede">허밍 멜로디를 MusicGen에 넣기 전 오디오로 합성하는 방식만 바꿔서 같은 곡을 다시 만들었어요. 전은 지금 서버 방식(음표마다 끊김), 후는 #23 방식(이어지는 음표를 끊김 없이 합성)이에요. seed와 텍스트 조건이 같아서 차이는 합성 방식에서만 와요.</p>
+    <div class="meta">MusicGen melody · "pop, happy" · seed 0 · 30초 · 로컬 MPS · 막대의 세로선 = 허밍 끝</div>
+  </header>
+
+  <div class="controls">
+    <label for="sync"><input type="checkbox" id="sync" checked> 다른 곡으로 바꿔도 같은 위치에서 이어 듣기</label>
+  </div>
+
+  <main id="rows" class="wrap"></main>
+
+  <footer>
+    <p>"허밍 입력"은 MusicGen에 넣는 멜로디 소리(사인파)예요. 후에서도 남는 끊김은 추출 결과에 들어 있는 짧은 쉼표 때문이에요.</p>
+    <p>후보 2의 확장 멜로디는 전과 후가 같은 음표이고, 합성만 다르게 했어요. 주황색 peak는 1.0을 넘은 곡이에요(#20).</p>
+  </footer>
+</div>
+
+<script>
+const DURATION = 30;
+const ROWS = [['humix_test_1', 16.82], ['humix_test_2', 12.12], ['humix_test_4', 10.53], ['humix_test_5', 11.69], ['humix_test_6', 7.63]];
+const METHODS = [
+  { id: 'loop', name: '현재 방식', sub: 'loop', color: 'var(--loop)' },
+  { id: 'two_stage', name: '후보 1', sub: '2단계 생성', color: 'var(--stage)' },
+  { id: 'extended', name: '후보 2', sub: '멜로디 확장', color: 'var(--ext)' },
+];
+const players = [];
+let lastTime = 0;
+
+function el(tag, attrs = {}, children = []) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === 'class') node.className = v;
+    else if (k === 'text') node.textContent = v;
+    else if (k === 'style') node.setAttribute('style', v);
+    else node.setAttribute(k, v);
+  }
+  for (const c of [].concat(children)) if (c) node.append(c);
+  return node;
+}
+
+function audio(src, label) {
+  return el('audio', { controls: '', preload: 'none', src, 'aria-label': label });
+}
+
+function take(kind, src, label, hum, key) {
+  const a = audio(src, label);
+  const pct = (hum / DURATION) * 100;
+  const progress = el('div', { class: 'progress' });
+  const ruler = el('div', { class: 'ruler', 'aria-hidden': 'true' }, [
+    el('div', { class: 'track' }, [el('div', { class: 'hum-zone', style: `width:${pct}%` }), progress]),
+    el('div', { class: 'hum-mark', style: `left:calc(${pct}% - 1px)` }),
+  ]);
+  const stat = el('span', { class: 'stat', 'data-key': key });
+  const box = el('div', { class: `take ${kind}-take` }, [
+    el('div', { class: 'take-head' }, [el('span', { class: `tag ${kind}`, text: kind === 'before' ? '전 (지금 서버)' : '후 (#23)' }), stat]),
+    a, ruler,
+  ]);
+  a.addEventListener('timeupdate', () => {
+    progress.style.width = `${Math.min(a.currentTime / DURATION, 1) * 100}%`;
+    if (!a.paused) lastTime = a.currentTime;
+  });
+  players.push({ audio: a, box, sync: true });
+  return box;
+}
+
+const rowsEl = document.getElementById('rows');
+for (const [sample, hum] of ROWS) {
+  const base = `${sample}_h${hum}`;
+  const inputs = el('div', { class: 'inputs' });
+  for (const [label, src] of [['원본 녹음', `audio/${sample}_humming.mp3`], ['허밍 입력 · 전', `audio/synth23/${sample}_input_before.mp3`], ['허밍 입력 · 후', `audio/synth23/${sample}_input_after.mp3`]]) {
+    const a = audio(src, `${sample} ${label}`);
+    players.push({ audio: a, box: null, sync: false });
+    inputs.append(el('div', { class: 'input' }, [el('span', { text: label }), a]));
+  }
+  const cards = el('div', { class: 'cards' });
+  for (const m of METHODS) {
+    cards.append(el('section', { class: 'card', style: `--c:${m.color}` }, [
+      el('div', { class: 'card-title' }, [document.createTextNode(m.name), el('span', { text: m.sub })]),
+      take('before', `audio/${base}_${m.id}.mp3`, `${sample} ${m.name} 합성 전`, hum, `before:${base}_${m.id}.wav`),
+      take('after', `audio/synth23/${sample}_${m.id}_after.mp3`, `${sample} ${m.name} 합성 후`, hum, `after:${sample}:${m.id}`),
+    ]));
+  }
+  rowsEl.append(el('section', { class: 'row' }, [
+    el('h2', {}, [document.createTextNode(sample), el('span', { class: 'mono', text: `허밍 ${hum}초 → 30초` })]),
+    inputs, cards,
+  ]));
+}
+
+for (const p of players) {
+  p.audio.addEventListener('play', () => {
+    for (const o of players) if (o.audio !== p.audio && !o.audio.paused) o.audio.pause();
+    if (p.sync && document.getElementById('sync').checked && Math.abs(p.audio.currentTime - lastTime) > 0.3) {
+      p.audio.currentTime = lastTime;
+    }
+    players.forEach(o => o.box && o.box.classList.toggle('playing', o.audio === p.audio));
+  });
+  p.audio.addEventListener('pause', () => p.box && p.box.classList.remove('playing'));
+}
+
+function showStat(key, peak) {
+  const stat = document.querySelector(`.stat[data-key="${key}"]`);
+  if (!stat) return;
+  stat.textContent = `peak ${peak.toFixed(2)}`;
+  stat.classList.toggle('warn', peak > 1);
+}
+fetch('generation.jsonl').then(r => r.ok ? r.text() : '').then(text => {
+  for (const line of text.split('\n')) if (line.trim()) { const d = JSON.parse(line); showStat(`before:${d.file}`, d.peak); }
+}).catch(() => {});
+fetch('audio/synth23/stats.json').then(r => r.ok ? r.json() : []).then(rows => {
+  for (const d of rows) showStat(`after:${d.sample}:${d.method}`, d.peak);
+}).catch(() => {});
+</script>
