@@ -15,18 +15,17 @@ elif os.path.exists("/workspace"):
 
 import runpod
 import torch
-import torchaudio
 import math
 import os
 import requests
 from audiocraft.models import MusicGen
 from vector_processor import MelodyProcessor
 from melody_synth import synthesize_melody
+from audio_output import OUTPUT_SAMPLE_RATE, save_output_wav
 
 # MusicGen switches to extended generation beyond 30 seconds
 MAX_DURATION_SECONDS = 30
 MODIFY_DURATION_SECONDS = 30
-OUTPUT_SAMPLE_RATE = 32000
 
 # Initialize models globally
 model = None
@@ -131,7 +130,7 @@ def handle_music_generation(job_input, job_id, action):
         
         # 4. Save output locally
         output_wav = outputs[0].cpu()
-        torchaudio.save(local_output_path, output_wav, OUTPUT_SAMPLE_RATE)
+        save_output_wav(local_output_path, output_wav)
         output_duration_seconds = output_wav.shape[-1] / OUTPUT_SAMPLE_RATE
 
         # 5. Upload via presigned URL

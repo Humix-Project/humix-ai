@@ -33,7 +33,7 @@ class TestAIServerAPI(unittest.TestCase):
         
     @patch('app.load_model')
     @patch('app.convert_vectors_to_wav_tensor')
-    @patch('app.torchaudio.save')
+    @patch('app.save_output_wav')
     @patch('app.upload_via_presigned_url')
     @patch('requests.post')
     def test_generate_songs_endpoint(self, mock_post, mock_upload_presigned, mock_save, mock_convert, mock_load_model):

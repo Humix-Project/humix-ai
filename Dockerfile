@@ -7,6 +7,7 @@ COPY handler.py /handler.py
 COPY vector_processor.py /vector_processor.py
 COPY vector_service.py /vector_service.py
 COPY melody_synth.py /melody_synth.py
+COPY audio_output.py /audio_output.py
 
 CMD [ "python", "-c", "print('Docker smoke image built successfully')" ]
 
@@ -52,6 +53,7 @@ COPY handler.py /handler.py
 COPY vector_processor.py /vector_processor.py
 COPY vector_service.py /vector_service.py
 COPY melody_synth.py /melody_synth.py
+COPY audio_output.py /audio_output.py
 
 EXPOSE 8000
 

@@ -9,6 +9,7 @@ on:
       - 'vector_processor.py'
       - 'vector_service.py'
       - 'melody_synth.py'
+      - 'audio_output.py'
       - 'requirements.txt'
       - 'Dockerfile'
       - '.dockerignore'
