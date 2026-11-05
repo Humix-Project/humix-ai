@@ -8,12 +8,15 @@ Methods (same text condition, seed and humming for each):
              by extend_melody.py (run that first in venv-amt)
 
 Humming of length H is simulated by cropping the sample melody vectors to the first H seconds.
+--synth picks how the melody vectors become audio: pretty_midi (server before #23, default, keeps the
+first results reproducible) or continuous (melody_synth.py from #23).
 
 Example:
   python compare.py --samples samples/vector1.json samples/vector2.json --hum 5 10 20 --duration 30
 """
 import argparse
 import json
+import sys
 import time
 from pathlib import Path
 
@@ -24,7 +27,10 @@ import torch
 import torchaudio
 from audiocraft.models import MusicGen
 
-from melody_utils import crop_vectors, extended_name
+from melody_utils import crop_vectors, extended_name, resolve_hum_lengths
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from melody_synth import synthesize_melody as synthesize_continuous  # noqa: E402  (repo root, #23)
 
 MELODY_SAMPLE_RATE = 16000
 OUTPUT_SAMPLE_RATE = 32000
@@ -62,6 +68,17 @@ def synthesize_melody(melody_vectors, length_seconds, sample_rate=MELODY_SAMPLE_
     return torch.tensor(audio, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
 
 
+def synthesize_melody_continuous(melody_vectors, length_seconds, sample_rate=MELODY_SAMPLE_RATE):
+    # Server synthesis after #23, padded or cut to the humming length H like synthesize_melody
+    num_samples = round(length_seconds * sample_rate)
+    audio = synthesize_continuous(melody_vectors, sample_rate)[:num_samples]
+    audio = np.pad(audio, (0, max(num_samples - len(audio), 0)))
+    return torch.from_numpy(audio).unsqueeze(0).unsqueeze(0)
+
+
+SYNTHESIZERS = {'pretty_midi': synthesize_melody, 'continuous': synthesize_melody_continuous}
+
+
 def generate_loop(model, description, melody_wav, hum_seconds, duration_seconds):
     model.set_generation_params(duration=duration_seconds)
     return model.generate_with_chroma([description], melody_wav, MELODY_SAMPLE_RATE)
@@ -89,13 +106,16 @@ GENERATORS = {'loop': generate_loop, 'two_stage': generate_two_stage, 'extended'
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--samples', nargs='+', required=True, help='melody_vectors JSON files')
-    parser.add_argument('--hum', nargs='+', type=float, default=[5, 10, 20], help='humming lengths H (seconds)')
+    parser.add_argument('--hum', nargs='+', default=['5', '10', '20'],
+                        help="humming lengths H in seconds, or 'full' for the sample's own length")
     parser.add_argument('--duration', type=float, default=30)
     parser.add_argument('--methods', nargs='+', choices=METHODS, default=list(METHODS))
     parser.add_argument('--genre', default='pop')
     parser.add_argument('--mood', default='happy')
     parser.add_argument('--prompt', default=None)
     parser.add_argument('--seed', type=int, default=0)
+    parser.add_argument('--synth', choices=SYNTHESIZERS, default='pretty_midi',
+                        help='melody synthesis: pretty_midi (before #23) or continuous (#23)')
     parser.add_argument('--device', default='mps' if torch.backends.mps.is_available() else 'cpu')
     parser.add_argument('--out', default=str(Path(__file__).parent / 'outputs'))
     parser.add_argument('--extended-dir', default=str(Path(__file__).parent / 'outputs' / 'extended'),
@@ -108,7 +128,8 @@ def main():
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
     description = build_description(args.genre, args.mood, args.prompt)
-    print(f"Text condition: {description} / device: {args.device}", flush=True)
+    synthesize = SYNTHESIZERS[args.synth]
+    print(f"Text condition: {description} / device: {args.device} / synth: {args.synth}", flush=True)
 
     model = MusicGen.get_pretrained('facebook/musicgen-melody', device=args.device)
     results_path = out_dir / 'results.jsonl'
@@ -116,10 +137,9 @@ def main():
     for sample_path in args.samples:
         sample = Path(sample_path).stem
         melody_vectors = json.loads(Path(sample_path).read_text())
-        for hum_seconds in args.hum:
-            hum_seconds = min(hum_seconds, args.duration)
+        for hum_seconds in resolve_hum_lengths(args.hum, melody_vectors, args.duration):
             cropped = crop_vectors(melody_vectors, hum_seconds)
-            melody_wav = synthesize_melody(cropped, hum_seconds)
+            melody_wav = synthesize(cropped, hum_seconds)
             name = f"{sample}_h{hum_seconds:g}"
             torchaudio.save(str(out_dir / f"{name}_melody.wav"), melody_wav[0], MELODY_SAMPLE_RATE)
 
@@ -127,7 +147,7 @@ def main():
                 method_melody = melody_wav
                 if method == 'extended':
                     extended = json.loads((Path(args.extended_dir) / extended_name(sample, hum_seconds)).read_text())
-                    method_melody = synthesize_melody(extended, args.duration)
+                    method_melody = synthesize(extended, args.duration)
                     torchaudio.save(str(out_dir / f"{name}_extended_melody.wav"), method_melody[0],
                                     MELODY_SAMPLE_RATE)
 
@@ -142,7 +162,7 @@ def main():
 
                 result = {
                     'sample': sample, 'hum_seconds': hum_seconds, 'method': method,
-                    'notes': len(cropped), 'description': description, 'seed': args.seed,
+                    'notes': len(cropped), 'description': description, 'seed': args.seed, 'synth': args.synth,
                     'device': args.device, 'elapsed_seconds': round(elapsed, 1),
                     'output_seconds': output_wav.shape[-1] / OUTPUT_SAMPLE_RATE,
                     'peak': round(output_wav.abs().max().item(), 3), 'file': output_path.name,

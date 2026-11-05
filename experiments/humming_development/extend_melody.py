@@ -22,7 +22,7 @@ from anticipation import sample as amt_sample
 from anticipation.config import MAX_DUR, MAX_NOTE, MAX_PITCH, TIME_RESOLUTION
 from anticipation.vocab import DUR_OFFSET, NOTE_OFFSET, TIME_OFFSET
 
-from melody_utils import crop_vectors, extended_name
+from melody_utils import crop_vectors, extended_name, resolve_hum_lengths
 
 MELODY_INSTRUMENT = 0  # Acoustic Grand Piano, same as the synthesized MusicGen melody
 _original_instr_logits = amt_sample.instr_logits
@@ -90,7 +90,8 @@ def save_midi(melody_vectors, path):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--samples', nargs='+', required=True, help='melody_vectors JSON files')
-    parser.add_argument('--hum', nargs='+', type=float, default=[5, 10, 20])
+    parser.add_argument('--hum', nargs='+', default=['5', '10', '20'],
+                        help="humming lengths H in seconds, or 'full' for the sample's own length")
     parser.add_argument('--duration', type=float, default=30)
     parser.add_argument('--model', default='stanford-crfm/music-medium-800k')
     parser.add_argument('--top-p', type=float, default=0.95)
@@ -107,8 +108,7 @@ def main():
     for sample_path in args.samples:
         sample = Path(sample_path).stem
         melody_vectors = json.loads(Path(sample_path).read_text())
-        for hum_seconds in args.hum:
-            hum_seconds = min(hum_seconds, args.duration)
+        for hum_seconds in resolve_hum_lengths(args.hum, melody_vectors, args.duration):
             humming = crop_vectors(melody_vectors, hum_seconds)
             torch.manual_seed(args.seed)
             start = time.time()

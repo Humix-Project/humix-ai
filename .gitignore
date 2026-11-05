@@ -4,3 +4,5 @@ references/
 # Humming development comparison outputs (issue #14)
 experiments/humming_development/outputs/
 venv-amt/
+# Original humming recordings are never committed (only extracted vectors and generated results)
+experiments/humming_development/results/audio/*_humming.mp3

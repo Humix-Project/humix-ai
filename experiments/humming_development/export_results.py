@@ -30,6 +30,13 @@ def main():
         subprocess.run(['ffmpeg', '-y', '-loglevel', 'error', '-i', str(wav), '-codec:a', 'libmp3lame',
                         '-b:a', '128k', str(mp3)], check=True)
 
+    # Original recordings for the humix_test samples, if the extraction payload folder is present
+    for sample in sorted(BASE.glob('samples/humix_test_*.json')):
+        humming = BASE.parent / 'humming_payload' / sample.stem / 'humming.wav'
+        if humming.exists():
+            subprocess.run(['ffmpeg', '-y', '-loglevel', 'error', '-i', str(humming), '-codec:a', 'libmp3lame',
+                            '-b:a', '128k', str(audio_dir / f"{sample.stem}_humming.mp3")], check=True)
+
     for path in sorted((OUTPUTS / 'extended').glob('*')):
         if path.suffix in ('.json', '.mid'):
             shutil.copy2(path, extended_dir / path.name)
