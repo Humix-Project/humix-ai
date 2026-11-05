@@ -10,7 +10,6 @@ class MockModule(MagicMock):
 
 sys.modules['torch'] = MockModule()
 sys.modules['torchaudio'] = MockModule()
-sys.modules['pretty_midi'] = MockModule()
 sys.modules['boto3'] = MockModule()
 sys.modules['omegaconf'] = MockModule()
 sys.modules['numpy'] = MockModule()
