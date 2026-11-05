@@ -12,14 +12,14 @@ LABELS = {'A_text': 'A. 지금 방식 (텍스트: 장르, 분위기)',
           'C_melody': 'C. 멜로디 템포·조성 수정'}
 
 
-def mp3_uri(wav):
-    mp3 = subprocess.run(['ffmpeg', '-loglevel', 'error', '-i', str(wav), '-codec:a', 'libmp3lame', '-b:a', '128k',
+def mp3_uri(wav, bitrate):
+    mp3 = subprocess.run(['ffmpeg', '-loglevel', 'error', '-i', str(wav), '-codec:a', 'libmp3lame', '-b:a', bitrate,
                           '-f', 'mp3', '-'], capture_output=True, check=True).stdout
     return 'data:audio/mpeg;base64,' + base64.b64encode(mp3).decode()
 
 
-def player(wav):
-    return f'<audio controls preload="metadata" src="{mp3_uri(wav)}"></audio>'
+def player(wav, bitrate='96k'):
+    return f'<audio controls preload="metadata" src="{mp3_uri(wav, bitrate)}"></audio>'
 
 
 def mean(xs):
@@ -61,7 +61,7 @@ def main():
                 f"<td><div class=t>{html.escape(r['text'])}</div>{player(out / r['file'])}"
                 f"<div class=m>입력 멜로디 {r['input_bpm']} BPM · {r['input_key']}<br>"
                 f"<b>결과 {o['bpm']} BPM · {o['key']['name']} {ok_mode}</b> · 초당 음 {o['onsets_per_sec']}</div>"
-                f"<details><summary>입력 멜로디 듣기</summary>{player(out / r['file'].replace('.wav', '_melody.wav'))}"
+                f"<details><summary>입력 멜로디 듣기</summary>{player(out / r['file'].replace('.wav', '_melody.wav'), '32k')}"
                 f"</details></td>")
         sections.append(
             f"<h3>{sample} · {mood} <small>(V {t['valence']}, A {t['arousal']}) → 목표 {t['bpm']} BPM, "
