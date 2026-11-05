@@ -13,6 +13,8 @@
   - `samples/vector1.json`, `samples/vector2.json`(약 30초 허밍). 앞 H초(5 / 10 / 20초)만 잘라서 짧은 허밍을 흉내 냄
   - `samples/humix_test_{1,2,4,5,6}.json`: 새로 녹음한 짧은 허밍(7.6~16.8초)을 #22 추출기로 뽑은 멜로디 벡터. 녹음 길이 그대로 사용(`--hum full`). 원본 녹음은 커밋하지 않음
 - 텍스트 조건: `pop, happy`, seed 0, 생성 길이 30초
+  - 로컬 MPS에서는 seed를 고정해도 결과가 재현되지 않음. 같은 입력·seed로 같은 프로세스에서 연달아 생성해도 파형 상관이 0 근처(완전히 다른 곡). `torch.rand`, `torch.multinomial`은 seed대로 같은 값이 나와서, MusicGen이 토큰을 이어 뽑는 동안 MPS 연산 오차가 쌓여 갈라지는 것으로 추정. 서버(CUDA) 재현성은 미확인
+  - 그래서 생성된 곡끼리의 비교에는 방식 차이와 생성마다의 무작위 차이가 섞여 있음. 곡 하나씩의 청취 인상은 걸러서 봐야 하고, 입력(사인파) 비교와 수치(끊김 횟수, 음역, 조성 비율)는 결정론적이라 그대로 유효
 - MusicGen: `facebook/musicgen-melody`, audiocraft 1.3.0, 로컬 Apple Silicon(MPS)
 - 멜로디 확장: `stanford-crfm/music-medium-800k`(360M, Apache-2.0), CPU, `top_p=0.95`
   - 피아노 한 트랙만 생성하도록 제한하고, 겹치는 음은 가장 높은 음만 남겨 단선율로 정리

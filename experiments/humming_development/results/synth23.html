@@ -76,8 +76,8 @@ footer p { margin: 0; max-width: 80ch; }
 <div class="wrap">
   <header>
     <h1>멜로디 합성 전후 비교</h1>
-    <p class="lede">허밍 멜로디를 MusicGen에 넣기 전 오디오로 합성하는 방식만 바꿔서 같은 곡을 다시 만들었어요. 전은 지금 서버 방식(음표마다 끊김), 후는 #23 방식(이어지는 음표를 끊김 없이 합성)이에요. seed와 텍스트 조건이 같아서 차이는 합성 방식에서만 와요.</p>
-    <div class="meta">MusicGen melody · "pop, happy" · seed 0 · 30초 · 로컬 MPS · 막대의 세로선 = 허밍 끝</div>
+    <p class="lede">허밍 멜로디를 MusicGen에 넣기 전 오디오로 합성하는 방식만 바꿔서 곡을 다시 만들었어요. 전은 지금 서버 방식(음표마다 끊김), 후는 #23 방식(이어지는 음표를 끊김 없이 합성)이에요. 로컬 MPS에서는 seed를 고정해도 생성할 때마다 다른 곡이 나와서, 곡끼리의 차이에는 합성 방식 말고 생성마다의 무작위 차이도 섞여 있어요. 합성 방식의 차이 자체는 "허밍 입력 · 전/후"에서 들을 수 있어요.</p>
+    <div class="meta">MusicGen melody · "pop, happy" · seed 0(MPS에서 재현 안 됨) · 30초 · 로컬 MPS · 막대의 세로선 = 허밍 끝</div>
   </header>
 
   <div class="controls">
