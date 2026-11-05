@@ -3,7 +3,6 @@ torchaudio
 fastapi
 uvicorn
 runpod
-pretty_midi
 boto3
 requests
 librosa

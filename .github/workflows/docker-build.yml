@@ -8,6 +8,7 @@ on:
       - 'handler.py'
       - 'vector_processor.py'
       - 'vector_service.py'
+      - 'melody_synth.py'
       - 'requirements.txt'
       - 'Dockerfile'
       - '.dockerignore'
