@@ -1,2 +1,5 @@
 # Ignore the references directory containing design documents and PDFs
 references/
+
+# Section regeneration PoC outputs (issue #13)
+experiments/section_regeneration/outputs/

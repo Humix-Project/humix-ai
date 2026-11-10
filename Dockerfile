@@ -8,6 +8,7 @@ COPY vector_processor.py /vector_processor.py
 COPY vector_service.py /vector_service.py
 COPY melody_synth.py /melody_synth.py
 COPY audio_output.py /audio_output.py
+COPY section_regen.py /section_regen.py
 
 CMD [ "python", "-c", "print('Docker smoke image built successfully')" ]
 
@@ -54,6 +55,7 @@ COPY vector_processor.py /vector_processor.py
 COPY vector_service.py /vector_service.py
 COPY melody_synth.py /melody_synth.py
 COPY audio_output.py /audio_output.py
+COPY section_regen.py /section_regen.py
 
 EXPOSE 8000
 

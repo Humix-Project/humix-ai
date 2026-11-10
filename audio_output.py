@@ -17,8 +17,12 @@ def soft_clip(wav, threshold=LIMITER_THRESHOLD):
     return torch.where(over, limited, wav)
 
 
+def write_wav(path, wav, sample_rate=OUTPUT_SAMPLE_RATE):
+    """Save as 16-bit PCM wav without limiting (for audio that is already limited, e.g. a merged song)."""
+    # soundfile instead of torchaudio.save: newer torchaudio (TorchCodec) ignores encoding/bits_per_sample
+    sf.write(path, wav.detach().cpu().float().numpy().T, sample_rate, subtype="PCM_16")
+
+
 def save_output_wav(path, wav, sample_rate=OUTPUT_SAMPLE_RATE):
     """Limit the MusicGen output and save it as 16-bit PCM wav."""
-    wav = soft_clip(wav.detach().cpu().float())
-    # soundfile instead of torchaudio.save: newer torchaudio (TorchCodec) ignores encoding/bits_per_sample
-    sf.write(path, wav.numpy().T, sample_rate, subtype="PCM_16")
+    write_wav(path, soft_clip(wav.detach().cpu().float()), sample_rate)

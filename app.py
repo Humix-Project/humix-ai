@@ -22,13 +22,13 @@ import requests
 from audiocraft.models import MusicGen
 from vector_processor import MelodyProcessor
 from melody_synth import synthesize_melody
-from audio_output import OUTPUT_SAMPLE_RATE, save_output_wav
+from audio_output import OUTPUT_SAMPLE_RATE, save_output_wav, write_wav
+from section_regen import build_modify_text, fit_length, load_source_audio, regenerate_section
 
 import threading
 
 # MusicGen switches to extended generation beyond 30 seconds
 MAX_DURATION_SECONDS = 30
-MODIFY_DURATION_SECONDS = 30
 
 app = FastAPI(title="HuMix AI MusicGen & Vectorization Service")
 processor = MelodyProcessor()
@@ -71,11 +71,18 @@ class GenerationRequest(BaseModel):
     presigned_url: str
 
 class ModificationRequest(BaseModel):
+    # Section regeneration (#13): all times are on the source song's timeline
     task_id: str
-    melody_vectors: List[MelodyVector]
+    melody_vectors: List[MelodyVector] = Field(min_length=1)
     genre: str = ""
     mood: str = ""
     prompt: Optional[str] = None
+    text_condition: Optional[str] = None
+    edit_prompt: Optional[str] = None
+    humming_end_seconds: Optional[float] = None
+    source_audio_url: str
+    section_start_seconds: float
+    section_end_seconds: float
     callback_url: str
     presigned_url: str
 
@@ -93,6 +100,12 @@ class RunpodInput(BaseModel):
     prompt: Optional[str] = None
     duration_seconds: Optional[float] = None
     s3_url: Optional[str] = None
+    text_condition: Optional[str] = None
+    edit_prompt: Optional[str] = None
+    humming_end_seconds: Optional[float] = None
+    source_audio_url: Optional[str] = None
+    section_start_seconds: Optional[float] = None
+    section_end_seconds: Optional[float] = None
 
 class RunpodRequestEnvelope(BaseModel):
     input: RunpodInput
@@ -139,9 +152,11 @@ def process_music_generation(task_id: str, melody_vectors: List[MelodyVector], d
 
         # 4. Save output locally
         print(f"[{task_id}] Generation complete. Saving output WAV locally...")
-        output_wav = outputs[0].cpu()
+        # Save exactly the requested length (#21): audiocraft generates whole 1/50 s frames
+        num_samples = round(duration_seconds * OUTPUT_SAMPLE_RATE)
+        output_wav = fit_length(outputs[0].cpu(), num_samples)
         save_output_wav(local_output_path, output_wav)
-        output_duration_seconds = output_wav.shape[-1] / OUTPUT_SAMPLE_RATE
+        output_duration_seconds = num_samples / OUTPUT_SAMPLE_RATE
         
         # 5. Upload via presigned URL
         print(f"[{task_id}] Uploading generated file to S3 via presigned URL...")
@@ -169,6 +184,46 @@ def process_music_generation(task_id: str, melody_vectors: List[MelodyVector], d
         if os.path.exists(local_output_path):
             os.remove(local_output_path)
 
+def process_section_regeneration(task_id: str, req: ModificationRequest):
+    """Regenerate [section_start_seconds, section_end_seconds) of a version and upload the merged song (#13)."""
+    description = build_modify_text(req.text_condition, req.edit_prompt,
+                                    build_description(req.genre, req.mood, req.prompt))
+    print(f"\n[START] Starting section regeneration task: {task_id}")
+    print(f"  Text condition: {description}")
+    print(f"  Section: {req.section_start_seconds}~{req.section_end_seconds}s")
+    local_output_path = f"/tmp/{task_id}.wav"
+    try:
+        load_model()
+        melody_vectors = [v.model_dump() for v in req.melody_vectors]
+        source = load_source_audio(req.source_audio_url)
+        with model_lock:
+            merged = regenerate_section(model, description, source, melody_vectors,
+                                        req.section_start_seconds, req.section_end_seconds, synthesize_melody,
+                                        humming_end_seconds=req.humming_end_seconds)
+        # Only the generated part was limited in the merge; the source part keeps its saved samples
+        write_wav(local_output_path, merged)
+        upload_via_presigned_url(local_output_path, req.presigned_url)
+
+        callback_payload = {
+            "generated_audio_url": req.presigned_url.split('?')[0],
+            "duration_seconds": merged.shape[-1] / OUTPUT_SAMPLE_RATE,
+            # The melody is not changed yet (AMT infilling comes after #25), so the received one is sent back
+            "extended_melody_vectors": melody_vectors,
+            "humming_end_seconds": req.humming_end_seconds,
+            "text_condition": description,
+        }
+        requests.post(req.callback_url, json=callback_payload, timeout=10)
+        print(f"[SUCCESS] Task {task_id} completed successfully!\n")
+    except Exception as e:
+        print(f"Error regenerating section for task {task_id}: {str(e)}")
+        try:
+            requests.post(req.callback_url, json={"generated_audio_url": "FAILED"}, timeout=10)
+        except Exception as cb_err:
+            print(f"Failed to send failure callback: {cb_err}")
+    finally:
+        if os.path.exists(local_output_path):
+            os.remove(local_output_path)
+
 @app.post("/internal/v1/ai/generation/songs", status_code=status.HTTP_202_ACCEPTED)
 async def generate_songs(req: GenerationRequest, background_tasks: BackgroundTasks):
     description = build_description(req.genre, req.mood, req.prompt)
@@ -177,8 +232,7 @@ async def generate_songs(req: GenerationRequest, background_tasks: BackgroundTas
 
 @app.post("/internal/v1/ai/generation/songs/{song_id}/modifications", status_code=status.HTTP_202_ACCEPTED)
 async def modify_songs(song_id: str, req: ModificationRequest, background_tasks: BackgroundTasks):
-    description = build_description(req.genre, req.mood, req.prompt)
-    background_tasks.add_task(process_music_generation, req.task_id, req.melody_vectors, description, MODIFY_DURATION_SECONDS, req.presigned_url, req.callback_url)
+    background_tasks.add_task(process_section_regeneration, req.task_id, req)
     return {"task_id": req.task_id}
 
 @app.post("/api/v1/ai/melody-extract")
@@ -201,14 +255,17 @@ async def runpod_run(req: RunpodRequestEnvelope, background_tasks: BackgroundTas
         if not inp.callback_url or not inp.presigned_url:
             raise HTTPException(status_code=400, detail="Both callback_url and presigned_url are required.")
         
-        # duration_seconds is required for generate; modify keeps the fixed default
-        if inp.action == "generate":
-            if inp.duration_seconds is None or not 0 < inp.duration_seconds <= MAX_DURATION_SECONDS:
-                raise HTTPException(status_code=400, detail=f"duration_seconds is required and must be in (0, {MAX_DURATION_SECONDS}].")
-            duration_seconds = inp.duration_seconds
-        else:
-            duration_seconds = MODIFY_DURATION_SECONDS
+        if inp.action == "modify":
+            try:
+                req = ModificationRequest(**{**inp.model_dump(exclude_none=True), "task_id": task_id})
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=f"Invalid modify request: {e}")
+            background_tasks.add_task(process_section_regeneration, task_id, req)
+            return {"id": task_id, "status": "IN_QUEUE"}
 
+        if inp.duration_seconds is None or not 0 < inp.duration_seconds <= MAX_DURATION_SECONDS:
+            raise HTTPException(status_code=400, detail=f"duration_seconds is required and must be in (0, {MAX_DURATION_SECONDS}].")
+        duration_seconds = inp.duration_seconds
         description = build_description(inp.genre, inp.mood, inp.prompt)
 
         background_tasks.add_task(

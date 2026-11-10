@@ -99,6 +99,18 @@ def test_melody_extraction():
         print(f"  Connection error: {e}")
     return False
 
+def generate_s3_download_url(object_key):
+    # The source song of a section regeneration is read by the AI server
+    try:
+        return s3_client.generate_presigned_url(
+            ClientMethod='get_object',
+            Params={'Bucket': BUCKET_NAME, 'Key': object_key},
+            ExpiresIn=3600
+        )
+    except Exception as e:
+        print(f"[-] Error generating download URL for {object_key}: {e}")
+        return None
+
 def test_async_generation(task_id, presigned_url, callback_url):
     url = f"{BASE_URL}/internal/v1/ai/generation/songs"
     
@@ -134,17 +146,23 @@ def test_async_generation(task_id, presigned_url, callback_url):
         print(f"  Connection error: {e}")
     return False
 
-def test_async_modification(task_id, presigned_url, callback_url):
+def test_async_modification(task_id, presigned_url, callback_url, source_audio_url):
     url = f"{BASE_URL}/internal/v1/ai/generation/songs/song_123/modifications"
     
+    # Regenerate 2~7 s of the song from test 2 (same melody; no humming_end_seconds = old-song rule)
     payload = {
         "task_id": task_id,
         "melody_vectors": [
-            {"pitch": 62, "onset_seconds": 0.0, "start_time_seconds": 0.0, "duration_seconds": 1.5}
+            {"pitch": 60, "onset_seconds": 0.0, "start_time_seconds": 0.0, "duration_seconds": 1.0},
+            {"pitch": 64, "onset_seconds": 1.0, "start_time_seconds": 1.0, "duration_seconds": 1.0}
         ],
         "genre": "pop",
         "mood": "happy",
-        "prompt": "Make it sound more rocky with electric guitars",
+        "prompt": None,
+        "edit_prompt": "Make it sound more rocky with electric guitars",
+        "source_audio_url": source_audio_url,
+        "section_start_seconds": 2.0,
+        "section_end_seconds": 7.0,
         "callback_url": callback_url,
         "presigned_url": presigned_url
     }
@@ -257,8 +275,10 @@ if __name__ == "__main__":
         mod_callback = f"{KVDB_BASE}/{mod_task_id}"
         
         mod_ok = False
-        if mod_presigned and test_async_modification(mod_task_id, mod_presigned, mod_callback):
-            mod_ok = poll_results(mod_task_id, mod_s3_key, "Music Modification")
+        source_audio_url = generate_s3_download_url(gen_s3_key) if gen_ok else None
+        if mod_presigned and source_audio_url and test_async_modification(mod_task_id, mod_presigned, mod_callback, source_audio_url):
+            # The merged song keeps the source's length
+            mod_ok = poll_results(mod_task_id, mod_s3_key, "Music Modification", expected_duration=GEN_DURATION_SECONDS)
             
         if gen_ok and mod_ok:
             print("\n🎉 ALL TESTS COMPLETED SUCCESSFULLY!")
