@@ -22,6 +22,7 @@ from audiocraft.models import MusicGen
 from vector_processor import MelodyProcessor
 from melody_synth import synthesize_melody
 from audio_output import OUTPUT_SAMPLE_RATE, save_output_wav, write_wav
+from melody_extend import extend_melody
 from section_regen import build_modify_text, fit_length, load_source_audio, parse_section_seconds, regenerate_section
 
 # MusicGen switches to extended generation beyond 30 seconds
@@ -129,22 +130,28 @@ def handle_music_generation(job_input, job_id):
         description = build_description(genre, mood, prompt)
         print(f"Text condition: {description}")
 
-        # 1. Convert melody vectors to audio tensor (failure goes to the FAILED callback)
-        melody_wav = convert_vectors_to_wav_tensor(melody_vectors, sample_rate=16000)
+        # 1. Extend a short humming to the song length with AMT (#25); on failure the humming is looped
+        extended_melody, humming_end_seconds = extend_melody(melody_vectors, duration_seconds)
+
+        # 2. Convert melody vectors to audio tensor (failure goes to the FAILED callback)
+        melody_wav = convert_vectors_to_wav_tensor(extended_melody, sample_rate=16000)
 
         device = model.device if hasattr(model, 'device') else ("cuda" if torch.cuda.is_available() else "cpu")
         melody_wav = melody_wav.to(device)
 
-        # 2. Generate music
+        # 3. Generate music
         model.set_generation_params(duration=duration_seconds)
         outputs = model.generate_with_chroma([description], melody_wav, 16000)
 
-        # 3. Save exactly the requested length (#21): audiocraft generates whole 1/50 s frames
+        # 4. Save exactly the requested length (#21): audiocraft generates whole 1/50 s frames
         output_wav = fit_length(outputs[0].cpu(), round(duration_seconds * OUTPUT_SAMPLE_RATE))
         save_output_wav(local_output_path, output_wav)
 
-        # 4. Upload and callback
-        return finish_with_upload(local_output_path, output_wav, presigned_url, callback_url)
+        # 5. Upload and callback with the melody this version used (backend stores it for regeneration)
+        return finish_with_upload(local_output_path, output_wav, presigned_url, callback_url, {
+            "extended_melody_vectors": extended_melody,
+            "humming_end_seconds": humming_end_seconds,
+        })
     except Exception as e:
         return fail(callback_url, f"Generation failed: {str(e)}")
     finally:
