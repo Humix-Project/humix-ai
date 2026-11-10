@@ -83,6 +83,100 @@ class TestAIServerAPI(unittest.TestCase):
             timeout=10
         )
 
+    @patch('app.load_model')
+    @patch('app.convert_vectors_to_wav_tensor')
+    @patch('app.save_output_wav')
+    @patch('app.upload_via_presigned_url')
+    @patch('requests.post')
+    def test_generate_songs_saves_requested_length(self, mock_post, mock_upload_presigned, mock_save, mock_convert, mock_load_model):
+        # audiocraft generates whole 1/50 s frames; the saved file is cut or padded to the request (#21)
+        mock_output = MagicMock()
+        mock_model = MagicMock()
+        mock_model.generate_with_chroma.return_value = [mock_output]
+        app.model = mock_model
+        payload = self.generation_payload()
+        payload["duration_seconds"] = 10.01
+
+        with patch('app.fit_length', side_effect=lambda wav, n: wav) as mock_fit:
+            self.client.post("/internal/v1/ai/generation/songs", json=payload)
+
+        self.assertEqual(mock_fit.call_args.args[1], 320320)
+        self.assertEqual(mock_post.call_args.kwargs["json"]["duration_seconds"], 10.01)
+
+    def modification_payload(self):
+        return {
+            "task_id": "task_456",
+            "melody_vectors": [{"pitch": 60, "onset_seconds": 0.0, "duration_seconds": 12.0}],
+            "genre": "pop",
+            "mood": "happy",
+            "prompt": "with piano",
+            "text_condition": "pop, happy, with piano",
+            "edit_prompt": "more strings",
+            "humming_end_seconds": 12.0,
+            "source_audio_url": "https://mock-bucket.s3.amazonaws.com/audio/source.wav",
+            "section_start_seconds": 10,
+            "section_end_seconds": 20,
+            "callback_url": "https://backend.com/api/v1/internal/callbacks/generation",
+            "presigned_url": "https://mock-bucket.s3.amazonaws.com/audio/new_variation.wav?X-Amz-Signature=abc"
+        }
+
+    @patch('app.load_model')
+    @patch('app.load_source_audio')
+    @patch('app.regenerate_section')
+    @patch('app.write_wav')
+    @patch('app.upload_via_presigned_url')
+    @patch('requests.post')
+    def test_modify_regenerates_section(self, mock_post, mock_upload, mock_write, mock_regen, mock_source, mock_load_model):
+        merged = MagicMock()
+        merged.shape = (1, 960000)
+        mock_regen.return_value = merged
+        app.model = MagicMock()
+
+        response = self.client.post("/internal/v1/ai/generation/songs/song_1/modifications",
+                                    json=self.modification_payload())
+
+        self.assertEqual(response.status_code, 202)
+        args = mock_regen.call_args
+        self.assertEqual(args.args[1], "pop, happy, with piano, more strings")
+        self.assertEqual(args.args[4:6], (10, 20))
+        self.assertEqual(args.kwargs["humming_end_seconds"], 12.0)
+        mock_source.assert_called_once_with("https://mock-bucket.s3.amazonaws.com/audio/source.wav")
+        mock_post.assert_called_with(
+            "https://backend.com/api/v1/internal/callbacks/generation",
+            json={
+                "generated_audio_url": "https://mock-bucket.s3.amazonaws.com/audio/new_variation.wav",
+                "duration_seconds": 30.0,
+                "extended_melody_vectors": [
+                    {"pitch": 60, "onset_seconds": 0.0, "start_time_seconds": None, "duration_seconds": 12.0}],
+                "humming_end_seconds": 12.0,
+                "text_condition": "pop, happy, with piano, more strings"
+            },
+            timeout=10
+        )
+
+    @patch('app.load_model')
+    @patch('app.load_source_audio')
+    @patch('app.regenerate_section')
+    @patch('requests.post')
+    def test_modify_sends_failed_callback_on_invalid_section(self, mock_post, mock_regen, mock_source, mock_load_model):
+        mock_regen.side_effect = ValueError("section must be at least 5.0 seconds")
+        app.model = MagicMock()
+
+        self.client.post("/internal/v1/ai/generation/songs/song_1/modifications", json=self.modification_payload())
+
+        mock_post.assert_called_once_with(
+            "https://backend.com/api/v1/internal/callbacks/generation",
+            json={"generated_audio_url": "FAILED"},
+            timeout=10
+        )
+
+    def test_modify_rejects_missing_fields(self):
+        for field in ("source_audio_url", "section_start_seconds", "section_end_seconds", "melody_vectors"):
+            payload = self.modification_payload()
+            del payload[field]
+            response = self.client.post("/internal/v1/ai/generation/songs/song_1/modifications", json=payload)
+            self.assertEqual(response.status_code, 422, field)
+
     def test_generate_songs_rejects_invalid_duration(self):
         for duration in (None, 0, -1, 30.5):
             payload = self.generation_payload()
