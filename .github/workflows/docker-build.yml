@@ -11,6 +11,8 @@ on:
       - 'melody_synth.py'
       - 'audio_output.py'
       - 'section_regen.py'
+      - 'melody_extend.py'
+      - 'melody_correct.py'
       - 'requirements.txt'
       - 'Dockerfile'
       - '.dockerignore'
