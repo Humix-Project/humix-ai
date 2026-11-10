@@ -30,6 +30,11 @@ import app
 class TestAIServerAPI(unittest.TestCase):
     def setUp(self):
         self.client = TestClient(app.app)
+        # AMT extension (#25) is tested in test_melody_extend; here the humming is "extended" by a rest
+        patcher = patch('app.extend_melody', side_effect=lambda vectors, duration: (
+            vectors + [{"pitch": 0, "onset_seconds": 1.3, "duration_seconds": duration - 1.3}], 1.3))
+        self.mock_extend = patcher.start()
+        self.addCleanup(patcher.stop)
         
     @patch('app.load_model')
     @patch('app.convert_vectors_to_wav_tensor')
@@ -58,7 +63,14 @@ class TestAIServerAPI(unittest.TestCase):
             "https://backend.com/api/v1/internal/callbacks/generation",
             json={
                 "generated_audio_url": "https://mock-bucket.s3.amazonaws.com/generated/songs/task_123.wav",
-                "duration_seconds": 10.0
+                "duration_seconds": 10.0,
+                "extended_melody_vectors": [
+                    {"pitch": 60, "onset_seconds": 0.0, "start_time_seconds": None, "duration_seconds": 0.5},
+                    {"pitch": 0, "onset_seconds": 0.5, "start_time_seconds": None, "duration_seconds": 0.3},
+                    {"pitch": 64, "onset_seconds": 0.8, "start_time_seconds": None, "duration_seconds": 0.5},
+                    {"pitch": 0, "onset_seconds": 1.3, "duration_seconds": 8.7}
+                ],
+                "humming_end_seconds": 1.3
             },
             timeout=10
         )

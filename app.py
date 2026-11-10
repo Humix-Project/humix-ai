@@ -23,6 +23,7 @@ from audiocraft.models import MusicGen
 from vector_processor import MelodyProcessor
 from melody_synth import synthesize_melody
 from audio_output import OUTPUT_SAMPLE_RATE, save_output_wav, write_wav
+from melody_extend import extend_melody
 from section_regen import build_modify_text, fit_length, load_source_audio, regenerate_section
 
 import threading
@@ -110,8 +111,8 @@ class RunpodInput(BaseModel):
 class RunpodRequestEnvelope(BaseModel):
     input: RunpodInput
 
-def convert_vectors_to_wav_tensor(melody_vectors: List[MelodyVector], sample_rate=16000):
-    audio_data = synthesize_melody([v.model_dump() for v in melody_vectors], sample_rate=sample_rate)
+def convert_vectors_to_wav_tensor(melody_vectors: List[dict], sample_rate=16000):
+    audio_data = synthesize_melody(melody_vectors, sample_rate=sample_rate)
     return torch.from_numpy(audio_data).unsqueeze(0).unsqueeze(0)
 
 def upload_via_presigned_url(local_path, presigned_url):
@@ -137,9 +138,14 @@ def process_music_generation(task_id: str, melody_vectors: List[MelodyVector], d
     try:
         load_model()
         
-        # 1. Convert melody vectors to audio tensor (failure goes to the FAILED callback)
+        # 1. Extend a short humming to the song length with AMT (#25); on failure the humming is looped
+        print(f"[{task_id}] Extending the humming melody...")
+        extended_melody, humming_end_seconds = extend_melody(
+            [v.model_dump() for v in melody_vectors], duration_seconds)
+
+        # 2. Convert melody vectors to audio tensor (failure goes to the FAILED callback)
         print(f"[{task_id}] Synthesizing melody vectors to audio waveform...")
-        melody_wav = convert_vectors_to_wav_tensor(melody_vectors, sample_rate=16000)
+        melody_wav = convert_vectors_to_wav_tensor(extended_melody, sample_rate=16000)
 
         device = "cuda" if torch.cuda.is_available() else "cpu"
         melody_wav = melody_wav.to(device)
@@ -166,7 +172,10 @@ def process_music_generation(task_id: str, melody_vectors: List[MelodyVector], d
         clean_audio_url = presigned_url.split('?')[0]
         callback_payload = {
             "generated_audio_url": clean_audio_url,
-            "duration_seconds": output_duration_seconds
+            "duration_seconds": output_duration_seconds,
+            # The melody this version used (backend stores it for regeneration)
+            "extended_melody_vectors": extended_melody,
+            "humming_end_seconds": humming_end_seconds
         }
         print(f"[{task_id}] Calling backend callback: {callback_url} (duration_seconds={output_duration_seconds})")
         requests.post(callback_url, json=callback_payload, timeout=10)
