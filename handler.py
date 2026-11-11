@@ -15,20 +15,19 @@ elif os.path.exists("/workspace"):
 
 import runpod
 import torch
-import torchaudio
-import pretty_midi
-import numpy as np
 import math
 import os
 import requests
 from audiocraft.models import MusicGen
 from vector_processor import MelodyProcessor
 from prompt_builder import build_description
+from melody_synth import synthesize_melody
+from audio_output import OUTPUT_SAMPLE_RATE, save_output_wav, write_wav
+from melody_extend import extend_melody
+from section_regen import build_modify_text, fit_length, load_source_audio, parse_section_seconds, regenerate_section
 
 # MusicGen switches to extended generation beyond 30 seconds
 MAX_DURATION_SECONDS = 30
-MODIFY_DURATION_SECONDS = 30
-OUTPUT_SAMPLE_RATE = 32000
 
 # Initialize models globally
 model = None
@@ -55,45 +54,8 @@ def load_model():
 # Removed pre-load model at container boot to support lazy loading and avoid CUDA initialization crashes during melody extraction.
 
 def convert_vectors_to_wav_tensor(melody_vectors, sample_rate=16000):
-    pm = pretty_midi.PrettyMIDI()
-    piano_program = pretty_midi.instrument_name_to_program('Acoustic Grand Piano')
-    piano = pretty_midi.Instrument(program=piano_program)
-    melody_end = 0.0
-
-    for vector in melody_vectors:
-        pitch = vector.get('pitch')
-        onset = vector.get('onset_seconds') if vector.get('onset_seconds') is not None else vector.get('start_time_seconds')
-        if onset is None:
-            onset = 0.0
-        duration = vector.get('duration_seconds', 0.5)
-        end = onset + duration
-        # Rests still count toward the melody length
-        melody_end = max(melody_end, end)
-
-        # pitch 0 is a rest; synthesizing it would produce an 8.18Hz full-amplitude tone
-        if pitch == 0:
-            continue
-
-        note = pretty_midi.Note(
-            velocity=100,
-            pitch=pitch,
-            start=onset,
-            end=end
-        )
-        piano.notes.append(note)
-
-    if not piano.notes:
-        raise ValueError("melody_vectors has no pitched notes.")
-
-    pm.instruments.append(piano)
-    audio_data = pm.synthesize(fs=sample_rate)
-    # Cut the ~1s release tail so the melody loops with the humming length
-    melody_samples = round(melody_end * sample_rate)
-    audio_data = audio_data[:melody_samples]
-    if len(audio_data) < melody_samples:
-        audio_data = np.pad(audio_data, (0, melody_samples - len(audio_data)))
-    melody_wav = torch.tensor(audio_data, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
-    return melody_wav
+    audio_data = synthesize_melody(melody_vectors, sample_rate=sample_rate)
+    return torch.from_numpy(audio_data).unsqueeze(0).unsqueeze(0)
 
 def upload_via_presigned_url(local_path, presigned_url):
     print(f"Uploading output to S3 via presigned URL...")
@@ -115,7 +77,30 @@ def send_failure_callback(callback_url):
     except Exception as cb_err:
         print(f"Failed to send failure callback: {cb_err}")
 
-def handle_music_generation(job_input, job_id, action):
+def finish_with_upload(local_output_path, output_wav, presigned_url, callback_url, extra_fields=None):
+    """Upload the saved wav, send the success callback and return the job output."""
+    upload_via_presigned_url(local_output_path, presigned_url)
+    clean_audio_url = presigned_url.split('?')[0]
+    output_duration_seconds = output_wav.shape[-1] / OUTPUT_SAMPLE_RATE
+    callback_payload = {
+        "generated_audio_url": clean_audio_url,
+        "duration_seconds": output_duration_seconds,
+        **(extra_fields or {})
+    }
+    print(f"Calling backend callback: {callback_url} (duration_seconds={output_duration_seconds})")
+    requests.post(callback_url, json=callback_payload, timeout=10)
+    return {"status": "COMPLETED", **callback_payload}
+
+def fail(callback_url, error_msg):
+    print(error_msg)
+    # Send failure callback to prevent backend hanging
+    send_failure_callback(callback_url)
+    return {
+        "status": "FAILED",
+        "error": error_msg
+    }
+
+def handle_music_generation(job_input, job_id):
     task_id = job_input.get("task_id", job_id)
     melody_vectors = job_input.get("melody_vectors", [])
     genre = job_input.get("genre", "")
@@ -128,20 +113,10 @@ def handle_music_generation(job_input, job_id, action):
     if not callback_url or not presigned_url:
         raise ValueError("Both callback_url and presigned_url are required.")
 
-    # duration_seconds is required for generate; modify keeps the fixed default
-    if action == "generate":
-        try:
-            duration_seconds = parse_duration_seconds(job_input.get("duration_seconds"))
-        except ValueError as e:
-            error_msg = f"Invalid request: {e}"
-            print(error_msg)
-            send_failure_callback(callback_url)
-            return {
-                "status": "FAILED",
-                "error": error_msg
-            }
-    else:
-        duration_seconds = MODIFY_DURATION_SECONDS
+    try:
+        duration_seconds = parse_duration_seconds(job_input.get("duration_seconds"))
+    except ValueError as e:
+        return fail(callback_url, f"Invalid request: {e}")
 
     load_model()
     local_output_path = f"/tmp/{task_id}.wav"
@@ -149,50 +124,77 @@ def handle_music_generation(job_input, job_id, action):
         description = build_description(genre, mood, prompt)
         print(f"Text condition: {description}")
 
-        # 1. Convert melody vectors to audio tensor (failure goes to the FAILED callback)
-        melody_wav = convert_vectors_to_wav_tensor(melody_vectors, sample_rate=16000)
+        # 1. Extend a short humming to the song length with AMT (#25); on failure the humming is looped
+        extended_melody, humming_end_seconds = extend_melody(melody_vectors, duration_seconds)
+
+        # 2. Convert melody vectors to audio tensor (failure goes to the FAILED callback)
+        melody_wav = convert_vectors_to_wav_tensor(extended_melody, sample_rate=16000)
 
         device = model.device if hasattr(model, 'device') else ("cuda" if torch.cuda.is_available() else "cpu")
         melody_wav = melody_wav.to(device)
-        
-        # 2. Setup generation parameters
-        model.set_generation_params(duration=duration_seconds)
-        
+
         # 3. Generate music
+        model.set_generation_params(duration=duration_seconds)
         outputs = model.generate_with_chroma([description], melody_wav, 16000)
-        
-        # 4. Save output locally
-        output_wav = outputs[0].cpu()
-        torchaudio.save(local_output_path, output_wav, OUTPUT_SAMPLE_RATE)
-        output_duration_seconds = output_wav.shape[-1] / OUTPUT_SAMPLE_RATE
 
-        # 5. Upload via presigned URL
-        upload_via_presigned_url(local_output_path, presigned_url)
+        # 4. Save exactly the requested length (#21): audiocraft generates whole 1/50 s frames
+        output_wav = fit_length(outputs[0].cpu(), round(duration_seconds * OUTPUT_SAMPLE_RATE))
+        save_output_wav(local_output_path, output_wav)
 
-        # 6. Callback backend (Success)
-        clean_audio_url = presigned_url.split('?')[0]
-        callback_payload = {
-            "generated_audio_url": clean_audio_url,
-            "duration_seconds": output_duration_seconds
-        }
-        print(f"Calling backend callback: {callback_url} (duration_seconds={output_duration_seconds})")
-        requests.post(callback_url, json=callback_payload, timeout=10)
-
-        return {
-            "status": "COMPLETED",
-            "generated_audio_url": clean_audio_url,
-            "duration_seconds": output_duration_seconds
-        }
-        
+        # 5. Upload and callback with the melody this version used (backend stores it for regeneration)
+        return finish_with_upload(local_output_path, output_wav, presigned_url, callback_url, {
+            "extended_melody_vectors": extended_melody,
+            "humming_end_seconds": humming_end_seconds,
+        })
     except Exception as e:
-        error_msg = f"Generation failed: {str(e)}"
-        print(error_msg)
-        # Send failure callback to prevent backend hanging
-        send_failure_callback(callback_url)
-        return {
-            "status": "FAILED",
-            "error": error_msg
-        }
+        return fail(callback_url, f"Generation failed: {str(e)}")
+    finally:
+        if os.path.exists(local_output_path):
+            os.remove(local_output_path)
+
+def handle_section_regeneration(job_input, job_id):
+    """Regenerate [section_start_seconds, section_end_seconds) of a version and upload the merged song (#13)."""
+    task_id = job_input.get("task_id", job_id)
+    callback_url = job_input.get("callback_url")
+    presigned_url = job_input.get("presigned_url")
+    if not callback_url or not presigned_url:
+        raise ValueError("Both callback_url and presigned_url are required.")
+
+    try:
+        melody_vectors = job_input.get("melody_vectors")
+        source_audio_url = job_input.get("source_audio_url")
+        if not melody_vectors:
+            raise ValueError("melody_vectors is required.")
+        if not source_audio_url:
+            raise ValueError("source_audio_url is required.")
+        start = parse_section_seconds(job_input.get("section_start_seconds"), "section_start_seconds")
+        end = parse_section_seconds(job_input.get("section_end_seconds"), "section_end_seconds")
+    except ValueError as e:
+        return fail(callback_url, f"Invalid request: {e}")
+
+    humming_end_seconds = job_input.get("humming_end_seconds")
+    description = build_modify_text(
+        job_input.get("text_condition"), job_input.get("edit_prompt"),
+        build_description(job_input.get("genre", ""), job_input.get("mood", ""), job_input.get("prompt")))
+
+    load_model()
+    local_output_path = f"/tmp/{task_id}.wav"
+    try:
+        print(f"Text condition: {description}")
+        print(f"Section: {start}~{end}s (humming_end_seconds={humming_end_seconds})")
+        source = load_source_audio(source_audio_url)
+        merged = regenerate_section(model, description, source, melody_vectors, start, end, synthesize_melody,
+                                    humming_end_seconds=humming_end_seconds)
+        # Only the generated part was limited in the merge; the source part keeps its saved samples
+        write_wav(local_output_path, merged)
+        return finish_with_upload(local_output_path, merged, presigned_url, callback_url, {
+            # The melody is not changed yet (AMT infilling comes after #25), so the received one is sent back
+            "extended_melody_vectors": melody_vectors,
+            "humming_end_seconds": humming_end_seconds,
+            "text_condition": description,
+        })
+    except Exception as e:
+        return fail(callback_url, f"Section regeneration failed: {str(e)}")
     finally:
         if os.path.exists(local_output_path):
             os.remove(local_output_path)
@@ -217,8 +219,10 @@ def handler(job):
     
     if action == "melody-extract":
         return handle_melody_extraction(job_input)
-    elif action in ["generate", "modify"]:
-        return handle_music_generation(job_input, job.get("id"), action)
+    elif action == "generate":
+        return handle_music_generation(job_input, job.get("id"))
+    elif action == "modify":
+        return handle_section_regeneration(job_input, job.get("id"))
     else:
         return {
             "status": "FAILED",
