@@ -6,6 +6,8 @@ COPY app.py /app.py
 COPY handler.py /handler.py
 COPY vector_processor.py /vector_processor.py
 COPY vector_service.py /vector_service.py
+COPY prompt_builder.py /prompt_builder.py
+COPY gemini_client.py /gemini_client.py
 COPY melody_synth.py /melody_synth.py
 COPY audio_output.py /audio_output.py
 COPY section_regen.py /section_regen.py
@@ -58,6 +60,8 @@ COPY app.py /app.py
 COPY handler.py /handler.py
 COPY vector_processor.py /vector_processor.py
 COPY vector_service.py /vector_service.py
+COPY prompt_builder.py /prompt_builder.py
+COPY gemini_client.py /gemini_client.py
 COPY melody_synth.py /melody_synth.py
 COPY audio_output.py /audio_output.py
 COPY section_regen.py /section_regen.py

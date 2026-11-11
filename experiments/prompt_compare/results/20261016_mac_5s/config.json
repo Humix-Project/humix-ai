@@ -1,0 +1,174 @@
+{
+  "inputs": {
+    "duration_seconds": 5.0,
+    "seed": 42,
+    "melody_vectors": [
+      {
+        "pitch": 60,
+        "onset_seconds": 0.0,
+        "duration_seconds": 0.5
+      },
+      {
+        "pitch": 62,
+        "onset_seconds": 0.5,
+        "duration_seconds": 0.5
+      },
+      {
+        "pitch": 64,
+        "onset_seconds": 1.0,
+        "duration_seconds": 0.5
+      },
+      {
+        "pitch": 65,
+        "onset_seconds": 1.5,
+        "duration_seconds": 0.5
+      },
+      {
+        "pitch": 67,
+        "onset_seconds": 2.0,
+        "duration_seconds": 1.0
+      },
+      {
+        "pitch": 0,
+        "onset_seconds": 3.0,
+        "duration_seconds": 0.5
+      },
+      {
+        "pitch": 67,
+        "onset_seconds": 3.5,
+        "duration_seconds": 0.5
+      },
+      {
+        "pitch": 69,
+        "onset_seconds": 4.0,
+        "duration_seconds": 0.5
+      },
+      {
+        "pitch": 67,
+        "onset_seconds": 4.5,
+        "duration_seconds": 0.5
+      },
+      {
+        "pitch": 65,
+        "onset_seconds": 5.0,
+        "duration_seconds": 0.5
+      },
+      {
+        "pitch": 64,
+        "onset_seconds": 5.5,
+        "duration_seconds": 1.0
+      },
+      {
+        "pitch": 0,
+        "onset_seconds": 6.5,
+        "duration_seconds": 0.5
+      },
+      {
+        "pitch": 62,
+        "onset_seconds": 7.0,
+        "duration_seconds": 0.5
+      },
+      {
+        "pitch": 64,
+        "onset_seconds": 7.5,
+        "duration_seconds": 0.5
+      },
+      {
+        "pitch": 62,
+        "onset_seconds": 8.0,
+        "duration_seconds": 0.5
+      },
+      {
+        "pitch": 60,
+        "onset_seconds": 8.5,
+        "duration_seconds": 1.5
+      }
+    ],
+    "cases": [
+      {
+        "id": "c01_pop_upbeat_noprompt",
+        "genre": "pop",
+        "mood": "upbeat",
+        "prompt": null
+      },
+      {
+        "id": "c02_acoustic_en",
+        "genre": "pop",
+        "mood": "upbeat",
+        "prompt": "with acoustic guitar and soft drums"
+      },
+      {
+        "id": "c03_acoustic_ko",
+        "genre": "pop",
+        "mood": "upbeat",
+        "prompt": "어쿠스틱 기타랑 부드러운 드럼으로"
+      },
+      {
+        "id": "c04_jazz_calm_piano",
+        "genre": "jazz",
+        "mood": "calm",
+        "prompt": "피아노랑 콘트라베이스로 잔잔하게"
+      },
+      {
+        "id": "c05_classical_romantic_strings",
+        "genre": "classical",
+        "mood": "romantic",
+        "prompt": "잔잔한 피아노 위주로, 후반부에 스트링이 들어오는 느낌"
+      },
+      {
+        "id": "c06_hiphop_sad_808",
+        "genre": "hiphop",
+        "mood": "sad",
+        "prompt": "비트를 더 묵직하게, 808 베이스 강조"
+      },
+      {
+        "id": "c07_pop_calm_brighter",
+        "genre": "pop",
+        "mood": "calm",
+        "prompt": "더 밝고 경쾌하게"
+      },
+      {
+        "id": "c08_jazz_upbeat_faster",
+        "genre": "jazz",
+        "mood": "upbeat",
+        "prompt": "좀 더 빠르게"
+      },
+      {
+        "id": "c09_classical_sad_orch",
+        "genre": "classical",
+        "mood": "sad",
+        "prompt": "오케스트라 느낌으로 웅장하게"
+      },
+      {
+        "id": "c10_hiphop_romantic_vibe",
+        "genre": "hiphop",
+        "mood": "romantic",
+        "prompt": "밤에 드라이브할 때 듣기 좋은 느낌"
+      },
+      {
+        "id": "c11_pop_sad_slang",
+        "genre": "pop",
+        "mood": "sad",
+        "prompt": "감성 터지게 해줘"
+      }
+    ]
+  },
+  "strategies": [
+    "simple",
+    "translate",
+    "rewrite"
+  ],
+  "cases": [
+    "c01_pop_upbeat_noprompt",
+    "c02_acoustic_en",
+    "c03_acoustic_ko",
+    "c04_jazz_calm_piano",
+    "c05_classical_romantic_strings",
+    "c06_hiphop_sad_808",
+    "c07_pop_calm_brighter",
+    "c08_jazz_upbeat_faster",
+    "c09_classical_sad_orch",
+    "c10_hiphop_romantic_vibe",
+    "c11_pop_sad_slang"
+  ]
+}

@@ -21,6 +21,7 @@ import os
 import requests
 from audiocraft.models import MusicGen
 from vector_processor import MelodyProcessor
+from prompt_builder import build_description
 from melody_synth import synthesize_melody
 from audio_output import OUTPUT_SAMPLE_RATE, save_output_wav, write_wav
 from melody_extend import extend_melody
@@ -121,13 +122,6 @@ def upload_via_presigned_url(local_path, presigned_url):
         # Upload binary file using HTTP PUT
         res = requests.put(presigned_url, data=f, headers={"Content-Type": "audio/wav"})
         res.raise_for_status()
-
-def build_description(genre: Optional[str], mood: Optional[str], prompt: Optional[str]) -> str:
-    # MusicGen takes a single text description per sample
-    description = f"{genre or ''}, {mood or ''}"
-    if prompt and prompt.strip():
-        description += f", {prompt.strip()}"
-    return description
 
 def process_music_generation(task_id: str, melody_vectors: List[MelodyVector], description: str, duration_seconds: float, presigned_url: str, callback_url: str):
     print(f"\n[START] Starting music generation task: {task_id}")

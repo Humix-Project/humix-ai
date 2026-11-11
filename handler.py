@@ -20,6 +20,7 @@ import os
 import requests
 from audiocraft.models import MusicGen
 from vector_processor import MelodyProcessor
+from prompt_builder import build_description
 from melody_synth import synthesize_melody
 from audio_output import OUTPUT_SAMPLE_RATE, save_output_wav, write_wav
 from melody_extend import extend_melody
@@ -69,13 +70,6 @@ def parse_duration_seconds(value):
     if not 0 < value <= MAX_DURATION_SECONDS:
         raise ValueError(f"duration_seconds must be in (0, {MAX_DURATION_SECONDS}], got: {value}")
     return float(value)
-
-def build_description(genre, mood, prompt):
-    # MusicGen takes a single text description per sample
-    description = f"{genre}, {mood}"
-    if prompt and prompt.strip():
-        description += f", {prompt.strip()}"
-    return description
 
 def send_failure_callback(callback_url):
     try:

@@ -1,5 +1,11 @@
 # Ignore the references directory containing design documents and PDFs
 references/
 
+# Prompt comparison outputs (issue #15)
+experiments/prompt_compare/outputs/
+
 # Section regeneration PoC outputs (issue #13)
 experiments/section_regeneration/outputs/
+
+# Local secrets (API keys)
+.env

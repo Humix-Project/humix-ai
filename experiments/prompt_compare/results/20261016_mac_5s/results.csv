@@ -1,0 +1,34 @@
+﻿case_id,strategy,genre,mood,prompt,description,build_ms,generate_ms,wav
+c01_pop_upbeat_noprompt,simple,pop,upbeat,,"pop, upbeat",0.0,101783.0,c01_pop_upbeat_noprompt__simple.wav
+c01_pop_upbeat_noprompt,translate,pop,upbeat,,"pop, upbeat",4.8,177999.1,c01_pop_upbeat_noprompt__translate.wav
+c01_pop_upbeat_noprompt,rewrite,pop,upbeat,,"modern pop track, polished production, punchy drums, electric bass, bright synths, piano, upbeat, energetic and cheerful",0.0,168796.0,c01_pop_upbeat_noprompt__rewrite.wav
+c02_acoustic_en,simple,pop,upbeat,with acoustic guitar and soft drums,"pop, upbeat, with acoustic guitar and soft drums",0.0,185126.5,c02_acoustic_en__simple.wav
+c02_acoustic_en,translate,pop,upbeat,with acoustic guitar and soft drums,"pop, upbeat, with acoustic guitar and soft drums",0.0,177545.3,c02_acoustic_en__translate.wav
+c02_acoustic_en,rewrite,pop,upbeat,with acoustic guitar and soft drums,"modern pop track, polished production, acoustic guitar strumming, soft rhythmic drums, warm and bright, gentle groove, upbeat, energetic and cheerful",11.7,210132.2,c02_acoustic_en__rewrite.wav
+c03_acoustic_ko,simple,pop,upbeat,어쿠스틱 기타랑 부드러운 드럼으로,"pop, upbeat, 어쿠스틱 기타랑 부드러운 드럼으로",0.0,178845.5,c03_acoustic_ko__simple.wav
+c03_acoustic_ko,translate,pop,upbeat,어쿠스틱 기타랑 부드러운 드럼으로,"pop, upbeat, with acoustic guitar and gentle drums",7.9,155111.1,c03_acoustic_ko__translate.wav
+c03_acoustic_ko,rewrite,pop,upbeat,어쿠스틱 기타랑 부드러운 드럼으로,"modern pop track, polished production, acoustic guitar strumming, soft brush drums, gentle rhythm, warm tone, upbeat, energetic and cheerful",2.0,168060.1,c03_acoustic_ko__rewrite.wav
+c04_jazz_calm_piano,simple,jazz,calm,피아노랑 콘트라베이스로 잔잔하게,"jazz, calm, 피아노랑 콘트라베이스로 잔잔하게",0.0,174265.6,c04_jazz_calm_piano__simple.wav
+c04_jazz_calm_piano,translate,jazz,calm,피아노랑 콘트라베이스로 잔잔하게,"jazz, calm, Soft and calm with piano and contrabass",6.3,188208.4,c04_jazz_calm_piano__translate.wav
+c04_jazz_calm_piano,rewrite,jazz,calm,피아노랑 콘트라베이스로 잔잔하게,"jazz piece, live band recording, soft acoustic piano, mellow upright bass, gentle and calm, intimate acoustic jazz, calm, relaxing and gentle",6.4,179732.4,c04_jazz_calm_piano__rewrite.wav
+c05_classical_romantic_strings,simple,classical,romantic,"잔잔한 피아노 위주로, 후반부에 스트링이 들어오는 느낌","classical, romantic, 잔잔한 피아노 위주로, 후반부에 스트링이 들어오는 느낌",0.0,209529.2,c05_classical_romantic_strings__simple.wav
+c05_classical_romantic_strings,translate,classical,romantic,"잔잔한 피아노 위주로, 후반부에 스트링이 들어오는 느낌","classical, romantic, Calm piano-driven tracks with strings entering in the second half",7.6,169194.0,c05_classical_romantic_strings__translate.wav
+c05_classical_romantic_strings,rewrite,classical,romantic,"잔잔한 피아노 위주로, 후반부에 스트링이 들어오는 느낌","classical piece, concert hall reverb, soft solo piano, gentle and calm, strings gradually swelling in, emotional crescendo, warm tone, romantic, warm and tender",7.4,172972.2,c05_classical_romantic_strings__rewrite.wav
+c06_hiphop_sad_808,simple,hiphop,sad,"비트를 더 묵직하게, 808 베이스 강조","hiphop, sad, 비트를 더 묵직하게, 808 베이스 강조",0.0,174962.3,c06_hiphop_sad_808__simple.wav
+c06_hiphop_sad_808,translate,hiphop,sad,"비트를 더 묵직하게, 808 베이스 강조","hiphop, sad, Make the beat heavier and emphasize the 808 bass",6.0,179838.5,c06_hiphop_sad_808__translate.wav
+c06_hiphop_sad_808,rewrite,hiphop,sad,"비트를 더 묵직하게, 808 베이스 강조","hip hop instrumental beat, heavy 808 bass, deep sub-bass, hard-hitting trap beats, punchy and dark, sad, melancholic and emotional",7.5,158816.6,c06_hiphop_sad_808__rewrite.wav
+c07_pop_calm_brighter,simple,pop,calm,더 밝고 경쾌하게,"pop, calm, 더 밝고 경쾌하게",0.0,150181.1,c07_pop_calm_brighter__simple.wav
+c07_pop_calm_brighter,translate,pop,calm,더 밝고 경쾌하게,"pop, calm, Make it brighter and more upbeat",7.2,159968.1,c07_pop_calm_brighter__translate.wav
+c07_pop_calm_brighter,rewrite,pop,calm,더 밝고 경쾌하게,"modern pop track, polished production, bright and cheerful, upbeat tempo, lively rhythm, sparkling synths, joyful, calm, relaxing and gentle",4.0,162359.4,c07_pop_calm_brighter__rewrite.wav
+c08_jazz_upbeat_faster,simple,jazz,upbeat,좀 더 빠르게,"jazz, upbeat, 좀 더 빠르게",0.0,156480.8,c08_jazz_upbeat_faster__simple.wav
+c08_jazz_upbeat_faster,translate,jazz,upbeat,좀 더 빠르게,"jazz, upbeat, Faster, please",6.7,147963.6,c08_jazz_upbeat_faster__translate.wav
+c08_jazz_upbeat_faster,rewrite,jazz,upbeat,좀 더 빠르게,"jazz piece, live band recording, fast swing tempo, energetic drums, brisk walking bass, lively piano, upbeat, energetic and cheerful",2.2,147507.5,c08_jazz_upbeat_faster__rewrite.wav
+c09_classical_sad_orch,simple,classical,sad,오케스트라 느낌으로 웅장하게,"classical, sad, 오케스트라 느낌으로 웅장하게",0.0,163983.0,c09_classical_sad_orch__simple.wav
+c09_classical_sad_orch,translate,classical,sad,오케스트라 느낌으로 웅장하게,"classical, sad, Grand and majestic with an orchestral feel",1.3,148881.6,c09_classical_sad_orch__translate.wav
+c09_classical_sad_orch,rewrite,classical,sad,오케스트라 느낌으로 웅장하게,"classical piece, concert hall reverb, grand orchestral score, massive brass section, sweeping strings, thunderous timpani, cinematic, epic and dramatic, sad, melancholic and emotional",2.9,157219.0,c09_classical_sad_orch__rewrite.wav
+c10_hiphop_romantic_vibe,simple,hiphop,romantic,밤에 드라이브할 때 듣기 좋은 느낌,"hiphop, romantic, 밤에 드라이브할 때 듣기 좋은 느낌",0.0,156330.7,c10_hiphop_romantic_vibe__simple.wav
+c10_hiphop_romantic_vibe,translate,hiphop,romantic,밤에 드라이브할 때 듣기 좋은 느낌,"hiphop, romantic, vibe for a night drive",7.1,147015.0,c10_hiphop_romantic_vibe__translate.wav
+c10_hiphop_romantic_vibe,rewrite,hiphop,romantic,밤에 드라이브할 때 듣기 좋은 느낌,"hip hop instrumental beat, night drive vibe, mellow hip-hop beat, smooth bassline, atmospheric electric piano, laid-back groove, romantic, warm and tender",1.6,148531.2,c10_hiphop_romantic_vibe__rewrite.wav
+c11_pop_sad_slang,simple,pop,sad,감성 터지게 해줘,"pop, sad, 감성 터지게 해줘",0.0,31660.9,c11_pop_sad_slang__simple.wav
+c11_pop_sad_slang,translate,pop,sad,감성 터지게 해줘,"pop, sad, Make it emotional and soulful",1.0,27428.0,c11_pop_sad_slang__translate.wav
+c11_pop_sad_slang,rewrite,pop,sad,감성 터지게 해줘,"modern pop track, polished production, emotional piano, sorrowful strings, slow tempo, melancholic melody, sad, melancholic and emotional",1.4,29458.0,c11_pop_sad_slang__rewrite.wav
