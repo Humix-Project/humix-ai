@@ -1,7 +1,6 @@
 from typing import Callable, Dict, Optional
-import os
 
-DEFAULT_STRATEGY = os.getenv("PROMPT_STRATEGY", "rewrite")
+DEFAULT_STRATEGY = "rewrite"
 
 # Template parts for the genre/mood values the backend documents; unknown values pass through as-is.
 # "instruments" is only used when the user prompt is empty, so it never fights instruments the user asked for.
