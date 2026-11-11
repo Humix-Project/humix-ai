@@ -25,3 +25,4 @@ demucs
 encodec
 av
 torchmetrics
+google-genai

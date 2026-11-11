@@ -1,6 +1,7 @@
 from typing import Callable, Dict, Optional
+import os
 
-DEFAULT_STRATEGY = "simple"
+DEFAULT_STRATEGY = os.getenv("PROMPT_STRATEGY", "rewrite")
 
 # Template parts for the genre/mood values the backend documents; unknown values pass through as-is.
 # "instruments" is only used when the user prompt is empty, so it never fights instruments the user asked for.
@@ -66,6 +67,25 @@ dreamy atmosphere, airy synth pads, reverb-drenched guitar, slow tempo
 genre: pop / mood: sad / request: with piano only
 solo piano, soft and intimate"""
 
+REWRITE_NOTEMPLATE_INSTRUCTION = """You convert a user's music request (genre, mood, prompt) into a short, dense English music caption for MusicGen.
+MusicGen understands short caption-style descriptions: instruments, playing style, texture, tempo, energy, and production.
+
+Rules:
+- Output ONE line of 3 to 8 comma-separated English descriptors. No sentences, quotes, or explanations.
+- Do NOT use rigid preset template phrases or prefixes (like "modern pop track" or "concert hall reverb").
+- Blend the given genre, mood, and user prompt into a cohesive, accurate musical description focusing heavily on the user's specific request.
+- Instrumental only: never mention vocals, singing, or lyrics.
+
+Examples:
+genre: pop / mood: upbeat / request: 어쿠스틱 기타랑 부드러운 드럼으로
+acoustic pop, acoustic guitar strumming, soft brush drums, warm and bright tone, upbeat groove
+genre: jazz / mood: calm / request: 피아노랑 콘트라베이스로 잔잔하게
+intimate jazz, soft acoustic piano, mellow upright bass, slow tempo, gentle and calm vibe
+genre: classical / mood: romantic / request: 잔잔한 피아노 위주로, 후반부에 스트링이 들어오는 느낌
+romantic classical, soft solo piano, gentle texture, strings gradually building in, warm and tender
+genre: hiphop / mood: sad / request: 비트를 더 묵직하게, 808 베이스 강조
+melancholic hip hop, heavy 808 bass, deep sub-bass, hard-hitting dark drums, emotional vibe"""
+
 
 def build_simple_description(genre: Optional[str], mood: Optional[str], prompt: Optional[str]) -> str:
     # Plain comma-joined condition from #12; empty fields are skipped
@@ -111,11 +131,26 @@ def build_rewritten_description(genre: Optional[str], mood: Optional[str], promp
     return ", ".join(part for part in (genre_part, prompt_part, mood_part) if part)
 
 
+def build_rewritten_notemplate_description(genre: Optional[str], mood: Optional[str], prompt: Optional[str]) -> str:
+    # Method D-slim: No rigid templates, pure LLM-driven tag synthesis based on genre, mood, and prompt
+    from gemini_client import generate_text
+    
+    g = (genre or "").strip()
+    m = (mood or "").strip()
+    p = (prompt or "").strip()
+    
+    request_payload = f"genre: {g or '-'} / mood: {m or '-'} / request: {p if p else 'none'}"
+    rewritten_tags = generate_text(REWRITE_NOTEMPLATE_INSTRUCTION, request_payload).splitlines()[0].strip()
+    
+    return rewritten_tags if rewritten_tags else ""
+
+
 # Strategy name -> builder; new prompt strategies register here
 STRATEGIES: Dict[str, Callable[[Optional[str], Optional[str], Optional[str]], str]] = {
     "simple": build_simple_description,
     "translate": build_translated_description,
     "rewrite": build_rewritten_description,
+    "rewrite_notemplate": build_rewritten_notemplate_description,
 }
 
 

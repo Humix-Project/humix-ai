@@ -7,6 +7,7 @@ COPY handler.py /handler.py
 COPY vector_processor.py /vector_processor.py
 COPY vector_service.py /vector_service.py
 COPY prompt_builder.py /prompt_builder.py
+COPY gemini_client.py /gemini_client.py
 
 CMD [ "python", "-c", "print('Docker smoke image built successfully')" ]
 
@@ -52,6 +53,7 @@ COPY handler.py /handler.py
 COPY vector_processor.py /vector_processor.py
 COPY vector_service.py /vector_service.py
 COPY prompt_builder.py /prompt_builder.py
+COPY gemini_client.py /gemini_client.py
 
 EXPOSE 8000
 

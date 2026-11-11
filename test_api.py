@@ -111,6 +111,10 @@ class TestAIServerAPI(unittest.TestCase):
             app.build_description("pop", "upbeat", "어쿠스틱 기타로", strategy="rewrite"),
             "modern pop track, polished production, acoustic guitar, soft drums, upbeat, energetic and cheerful",
         )
+        self.assertEqual(
+            app.build_description("pop", "upbeat", "어쿠스틱 기타로", strategy="rewrite_notemplate"),
+            "acoustic guitar, soft drums",
+        )
         # English prompts skip translation; unknown genre/mood pass through
         mock_generate.reset_mock()
         self.assertEqual(app.build_description("k-pop", "dreamy", "with piano", strategy="translate"), "k-pop, dreamy, with piano")
