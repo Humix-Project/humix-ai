@@ -35,6 +35,11 @@ class TestAIServerAPI(unittest.TestCase):
             vectors + [{"pitch": 0, "onset_seconds": 1.3, "duration_seconds": duration - 1.3}], 1.3))
         self.mock_extend = patcher.start()
         self.addCleanup(patcher.stop)
+        # Unit tests never call Gemini, even with GEMINI_API_KEY set: the default "rewrite" strategy then
+        # falls back to simple ("pop, happy, with electric guitars"). LLM tests patch generate_text themselves.
+        gemini = patch('gemini_client.generate_text', side_effect=RuntimeError("no Gemini in unit tests"))
+        gemini.start()
+        self.addCleanup(gemini.stop)
         
     @patch('app.load_model')
     @patch('app.convert_vectors_to_wav_tensor')
@@ -199,14 +204,33 @@ class TestAIServerAPI(unittest.TestCase):
             response = self.client.post("/internal/v1/ai/generation/songs", json=payload)
             self.assertEqual(response.status_code, 422, f"duration_seconds={duration}")
 
-    def test_build_description(self):
-        self.assertEqual(app.build_description("pop", "happy", None), "pop, happy")
-        self.assertEqual(app.build_description("pop", "happy", "  "), "pop, happy")
-        self.assertEqual(app.build_description("pop", "happy", "with piano"), "pop, happy, with piano")
+    def test_build_simple_description(self):
+        simple = dict(strategy="simple")
+        self.assertEqual(app.build_description("pop", "happy", None, **simple), "pop, happy")
+        self.assertEqual(app.build_description("pop", "happy", "  ", **simple), "pop, happy")
+        self.assertEqual(app.build_description("pop", "happy", "with piano", **simple), "pop, happy, with piano")
         # modify can arrive without genre/mood
-        self.assertEqual(app.build_description("", None, "with piano"), "with piano")
+        self.assertEqual(app.build_description("", None, "with piano", **simple), "with piano")
         with self.assertRaises(ValueError):
             app.build_description("pop", "happy", None, strategy="unknown")
+
+    @patch('gemini_client.generate_text')
+    def test_default_rewrite_without_prompt_uses_templates_only(self, mock_generate):
+        # The default strategy is "rewrite" (#31); without a prompt it needs no LLM call
+        self.assertEqual(
+            app.build_description("pop", "upbeat", None),
+            "modern pop track, polished production, punchy drums, electric bass, bright synths, piano, "
+            "upbeat, energetic and cheerful",
+        )
+        self.assertEqual(
+            app.build_description("Jazz", "CALM", "  "),
+            "jazz piece, live band recording, upright bass, brushed drums, piano comping, saxophone, "
+            "calm, relaxing and gentle",
+        )
+        # Values without a template pass through; empty fields are skipped
+        self.assertEqual(app.build_description("k-pop", "happy", None), "k-pop, happy")
+        self.assertEqual(app.build_description("", None, None), "")
+        mock_generate.assert_not_called()
 
     @patch('gemini_client.generate_text')
     def test_llm_strategies(self, mock_generate):
