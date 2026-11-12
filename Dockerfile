@@ -24,7 +24,10 @@ WORKDIR /
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Install system dependencies, including fluidsynth and soundfont for pretty_midi synthesis
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    software-properties-common && \
+    add-apt-repository universe && \
+    apt-get update && apt-get install -y --no-install-recommends \
     git \
     ffmpeg \
     fluidsynth \
