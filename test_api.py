@@ -229,6 +229,43 @@ class TestAIServerAPI(unittest.TestCase):
     def test_llm_failure_falls_back_to_simple(self, mock_generate):
         self.assertEqual(app.build_description("pop", "sad", "감성적으로", strategy="rewrite"), "pop, sad, 감성적으로")
 
+    @patch('app.load_model')
+    @patch('app.convert_vectors_to_wav_tensor')
+    @patch('app.save_output_wav')
+    @patch('app.upload_via_presigned_url')
+    @patch('requests.post')
+    def test_generate_songs_reports_progress_before_the_completion_callback(
+            self, mock_post, mock_upload_presigned, mock_save, mock_convert, mock_load_model):
+        progress_url = "https://backend.com/api/v1/internal/tasks/task_123/progress"
+        mock_output = MagicMock()
+        mock_output.cpu.return_value.shape = (1, 320000)
+        mock_model = MagicMock()
+
+        def generate(*args, **kwargs):
+            # MusicGen calls the custom progress callback while it samples tokens
+            callback = mock_model.set_custom_progress_callback.call_args_list[0].args[0]
+            callback(1500, 1500)
+            return [mock_output]
+
+        mock_model.generate_with_chroma.side_effect = generate
+        app.model = mock_model
+
+        response = self.client.post("/internal/v1/ai/generation/songs",
+                                    json={**self.generation_payload(), "progress_url": progress_url})
+
+        self.assertEqual(response.status_code, 202)
+        self.assertTrue(mock_model.generate_with_chroma.call_args.kwargs["progress"])
+        # The model's callback is cleared after the job
+        mock_model.set_custom_progress_callback.assert_called_with(None)
+        urls = [c.args[0] for c in mock_post.call_args_list]
+        self.assertIn(progress_url, urls)
+        self.assertEqual(urls[-1], "https://backend.com/api/v1/internal/callbacks/generation")
+        self.assertEqual(urls.count("https://backend.com/api/v1/internal/callbacks/generation"), 1)
+        for c in mock_post.call_args_list[:-1]:
+            self.assertEqual(c.args[0], progress_url)
+            self.assertEqual(c.kwargs["json"]["status"], "PROCESSING")
+            self.assertLessEqual(c.kwargs["json"]["progress"], 90)
+
     def generation_payload(self):
         return {
             "task_id": "task_123",

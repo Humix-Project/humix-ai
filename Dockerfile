@@ -13,6 +13,7 @@ COPY audio_output.py /audio_output.py
 COPY section_regen.py /section_regen.py
 COPY melody_extend.py /melody_extend.py
 COPY melody_correct.py /melody_correct.py
+COPY progress_report.py /progress_report.py
 
 CMD [ "python", "-c", "print('Docker smoke image built successfully')" ]
 
@@ -70,6 +71,7 @@ COPY audio_output.py /audio_output.py
 COPY section_regen.py /section_regen.py
 COPY melody_extend.py /melody_extend.py
 COPY melody_correct.py /melody_correct.py
+COPY progress_report.py /progress_report.py
 
 EXPOSE 8000
 

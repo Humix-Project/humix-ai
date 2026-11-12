@@ -13,6 +13,7 @@ on:
       - 'section_regen.py'
       - 'melody_extend.py'
       - 'melody_correct.py'
+      - 'progress_report.py'
       - 'requirements.txt'
       - 'Dockerfile'
       - '.dockerignore'
