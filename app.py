@@ -25,6 +25,7 @@ from prompt_builder import build_description
 from melody_synth import synthesize_melody
 from audio_output import OUTPUT_SAMPLE_RATE, save_output_wav, write_wav
 from melody_extend import extend_melody
+from progress_report import EXTENDING_MELODY, GENERATING, LOADING_MODEL, UPLOADING, ProgressReporter
 from section_regen import build_modify_text, fit_length, load_source_audio, regenerate_section
 
 import threading
@@ -71,6 +72,8 @@ class GenerationRequest(BaseModel):
     duration_seconds: float = Field(gt=0, le=MAX_DURATION_SECONDS)
     callback_url: str
     presigned_url: str
+    # Optional: stage-by-stage progress reports (progress_report.py)
+    progress_url: Optional[str] = None
 
 class ModificationRequest(BaseModel):
     # Section regeneration (#13): all times are on the source song's timeline
@@ -87,6 +90,7 @@ class ModificationRequest(BaseModel):
     section_end_seconds: float
     callback_url: str
     presigned_url: str
+    progress_url: Optional[str] = None
 
 class MelodyExtractRequest(BaseModel):
     s3_url: str
@@ -99,6 +103,7 @@ class RunpodInput(BaseModel):
     mood: Optional[str] = None
     callback_url: Optional[str] = None
     presigned_url: Optional[str] = None
+    progress_url: Optional[str] = None
     prompt: Optional[str] = None
     duration_seconds: Optional[float] = None
     s3_url: Optional[str] = None
@@ -123,17 +128,23 @@ def upload_via_presigned_url(local_path, presigned_url):
         res = requests.put(presigned_url, data=f, headers={"Content-Type": "audio/wav"})
         res.raise_for_status()
 
-def process_music_generation(task_id: str, melody_vectors: List[MelodyVector], description: str, duration_seconds: float, presigned_url: str, callback_url: str):
+def process_music_generation(task_id: str, melody_vectors: List[MelodyVector], description: str, duration_seconds: float, presigned_url: str, callback_url: str, progress_url: Optional[str] = None):
+    with ProgressReporter(progress_url, task_id) as progress:
+        _process_music_generation(task_id, melody_vectors, description, duration_seconds, presigned_url, callback_url, progress)
+
+def _process_music_generation(task_id, melody_vectors, description, duration_seconds, presigned_url, callback_url, progress):
     print(f"\n[START] Starting music generation task: {task_id}")
     print(f"  Text condition: {description}")
     print(f"  Duration: {duration_seconds}s")
     print(f"  Melody vectors count: {len(melody_vectors)}")
     local_output_path = f"/tmp/{task_id}.wav"
     try:
+        progress.start_stage(LOADING_MODEL)
         load_model()
         
         # 1. Extend a short humming to the song length with AMT (#25); on failure the humming is looped
         print(f"[{task_id}] Extending the humming melody...")
+        progress.start_stage(EXTENDING_MELODY)
         extended_melody, humming_end_seconds = extend_melody(
             [v.model_dump() for v in melody_vectors], duration_seconds)
 
@@ -147,8 +158,13 @@ def process_music_generation(task_id: str, melody_vectors: List[MelodyVector], d
         # 2. Setup generation parameters and generate music (Thread-Safe)
         with model_lock:
             print(f"[{task_id}] Running MusicGen Melody model inference...")
+            progress.start_stage(GENERATING)
             model.set_generation_params(duration=duration_seconds)
-            outputs = model.generate_with_chroma([description], melody_wav, 16000)
+            model.set_custom_progress_callback(progress.musicgen_callback())
+            try:
+                outputs = model.generate_with_chroma([description], melody_wav, 16000, progress=True)
+            finally:
+                model.set_custom_progress_callback(None)
 
         # 4. Save output locally
         print(f"[{task_id}] Generation complete. Saving output WAV locally...")
@@ -160,7 +176,10 @@ def process_music_generation(task_id: str, melody_vectors: List[MelodyVector], d
         
         # 5. Upload via presigned URL
         print(f"[{task_id}] Uploading generated file to S3 via presigned URL...")
+        progress.start_stage(UPLOADING)
         upload_via_presigned_url(local_output_path, presigned_url)
+        # No progress report may arrive after the completion callback
+        progress.close()
         
         # 6. Callback backend (Success)
         clean_audio_url = presigned_url.split('?')[0]
@@ -177,6 +196,7 @@ def process_music_generation(task_id: str, melody_vectors: List[MelodyVector], d
         
     except Exception as e:
         print(f"Error generating music for task {task_id}: {str(e)}")
+        progress.close()
         # Send failure callback to prevent backend hanging
         try:
             requests.post(callback_url, json={"generated_audio_url": "FAILED"}, timeout=10)
@@ -189,6 +209,10 @@ def process_music_generation(task_id: str, melody_vectors: List[MelodyVector], d
 
 def process_section_regeneration(task_id: str, req: ModificationRequest):
     """Regenerate [section_start_seconds, section_end_seconds) of a version and upload the merged song (#13)."""
+    with ProgressReporter(req.progress_url, task_id) as progress:
+        _process_section_regeneration(task_id, req, progress)
+
+def _process_section_regeneration(task_id: str, req: ModificationRequest, progress):
     description = build_modify_text(req.text_condition, req.edit_prompt,
                                     build_description(req.genre, req.mood, req.prompt))
     print(f"\n[START] Starting section regeneration task: {task_id}")
@@ -196,16 +220,21 @@ def process_section_regeneration(task_id: str, req: ModificationRequest):
     print(f"  Section: {req.section_start_seconds}~{req.section_end_seconds}s")
     local_output_path = f"/tmp/{task_id}.wav"
     try:
+        progress.start_stage(LOADING_MODEL)
         load_model()
         melody_vectors = [v.model_dump() for v in req.melody_vectors]
         source = load_source_audio(req.source_audio_url)
+        # The heartbeat keeps reporting while the section is generated
+        progress.start_stage(GENERATING)
         with model_lock:
             merged = regenerate_section(model, description, source, melody_vectors,
                                         req.section_start_seconds, req.section_end_seconds, synthesize_melody,
                                         humming_end_seconds=req.humming_end_seconds)
         # Only the generated part was limited in the merge; the source part keeps its saved samples
         write_wav(local_output_path, merged)
+        progress.start_stage(UPLOADING)
         upload_via_presigned_url(local_output_path, req.presigned_url)
+        progress.close()
 
         callback_payload = {
             "generated_audio_url": req.presigned_url.split('?')[0],
@@ -219,6 +248,7 @@ def process_section_regeneration(task_id: str, req: ModificationRequest):
         print(f"[SUCCESS] Task {task_id} completed successfully!\n")
     except Exception as e:
         print(f"Error regenerating section for task {task_id}: {str(e)}")
+        progress.close()
         try:
             requests.post(req.callback_url, json={"generated_audio_url": "FAILED"}, timeout=10)
         except Exception as cb_err:
@@ -230,7 +260,7 @@ def process_section_regeneration(task_id: str, req: ModificationRequest):
 @app.post("/internal/v1/ai/generation/songs", status_code=status.HTTP_202_ACCEPTED)
 async def generate_songs(req: GenerationRequest, background_tasks: BackgroundTasks):
     description = build_description(req.genre, req.mood, req.prompt)
-    background_tasks.add_task(process_music_generation, req.task_id, req.melody_vectors, description, req.duration_seconds, req.presigned_url, req.callback_url)
+    background_tasks.add_task(process_music_generation, req.task_id, req.melody_vectors, description, req.duration_seconds, req.presigned_url, req.callback_url, req.progress_url)
     return {"task_id": req.task_id}
 
 @app.post("/internal/v1/ai/generation/songs/{song_id}/modifications", status_code=status.HTTP_202_ACCEPTED)
@@ -278,7 +308,8 @@ async def runpod_run(req: RunpodRequestEnvelope, background_tasks: BackgroundTas
             description,
             duration_seconds,
             inp.presigned_url,
-            inp.callback_url
+            inp.callback_url,
+            inp.progress_url
         )
         return {"id": task_id, "status": "IN_QUEUE"}
     else:
